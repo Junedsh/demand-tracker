@@ -97,9 +97,24 @@ export default function DemandsPage() {
   }
 
   async function handleEdit(form) {
-    const { error } = await supabase.from('demands').update(form).eq('id', editDemand.id)
+    const original = editDemand
+
+    // If owner changed — clear previous review fields
+    const ownerChanged = form.action_owner !== original.action_owner
+    const updateData = {
+      ...form,
+      ...(ownerChanged && {
+        decision: null,
+        reject_reason: null,
+        promise_date: null,
+        status: 'Pending',
+        remarks: null,
+      })
+    }
+
+    const { error } = await supabase.from('demands').update(updateData).eq('id', original.id)
     if (error) throw error
-    toast('Demand updated', 'success')
+    toast(ownerChanged ? 'Demand reassigned — review cleared' : 'Demand updated', 'success')
     setEditDemand(null)
     refetch()
   }
