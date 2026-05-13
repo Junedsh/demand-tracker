@@ -5,6 +5,41 @@ import { useAuth } from '../context/AuthContext'
 import { Badge, Icons } from '../components/Icons'
 import DemandModal from '../components/DemandModal'
 
+function downloadCSV(data) {
+  const headers = ['Store', 'ABO', 'LM', 'Ask', 'Owner', 'Department', 'Decision', 'Rejection Reason', 'Status', 'Promise Date', 'Remarks']
+  const rows = data.map(d => [
+    d.store_name || '',
+    d.abo || '',
+    d.lm_name || '',
+    d.original_ask || '',
+    d.action_owner || '',
+    d.department || '',
+    d.decision || '',
+    d.reject_reason || '',
+    d.status || '',
+    d.promise_date || '',
+    d.remarks || '',
+  ])
+  const csv = [headers, ...rows]
+    .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `demands-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+const DownloadIcon = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" />
+    <line x1="12" y1="15" x2="12" y2="3" />
+  </svg>
+)
+
 export default function DashboardPage() {
   const { toast } = useOutletContext()
   const { profile } = useAuth()
@@ -58,12 +93,10 @@ export default function DashboardPage() {
     refetch()
   }
 
-  // Dropdown options derived from demands
   const lmOptions = [...new Set(demands.map(d => d.lm_name).filter(Boolean))].sort()
   const aboOptions = [...new Set(demands.map(d => d.abo).filter(Boolean))].sort()
   const storeOptions = [...new Set(demands.map(d => d.store_name).filter(Boolean))].sort()
 
-  // Apply filters
   const displayed = demands.filter(d => {
     if (filterLM && d.lm_name !== filterLM) return false
     if (filterABO && d.abo !== filterABO) return false
@@ -95,9 +128,19 @@ export default function DashboardPage() {
           <div className="page-title">Dashboard</div>
           <div className="page-sub">{patchLabel}</div>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
-          {Icons.plus} Add Demand
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="btn"
+            onClick={() => downloadCSV(displayed)}
+            disabled={displayed.length === 0}
+            title="Download as CSV — opens in Excel"
+          >
+            {DownloadIcon} Export
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
+            {Icons.plus} Add Demand
+          </button>
+        </div>
       </div>
 
       <div className="page-body">
@@ -122,13 +165,11 @@ export default function DashboardPage() {
 
         <div className="table-wrap">
           <div className="table-toolbar">
-            {/* LM filter */}
             <select className="filter-select" value={filterLM} onChange={e => { setFilterLM(e.target.value); setFilterStore('') }}>
               <option value="">All LMs</option>
               {lmOptions.map(l => <option key={l}>{l}</option>)}
             </select>
 
-            {/* ABO filter — admin only */}
             {role === 'admin' && (
               <select className="filter-select" value={filterABO} onChange={e => { setFilterABO(e.target.value); setFilterStore('') }}>
                 <option value="">All ABOs</option>
@@ -136,7 +177,6 @@ export default function DashboardPage() {
               </select>
             )}
 
-            {/* Store filter */}
             <select className="filter-select" value={filterStore} onChange={e => setFilterStore(e.target.value)}>
               <option value="">All Stores</option>
               {storeOptions
