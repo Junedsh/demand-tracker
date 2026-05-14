@@ -62,19 +62,6 @@ const DownloadIcon = (
   </svg>
 )
 
-// Truncated cell with tooltip
-function TruncTd({ text, maxWidth = 160, fontSize = 12, color = 'var(--text2)' }) {
-  if (!text || text === '—') return <td style={{ fontSize, color: 'var(--text3)' }}>—</td>
-  return (
-    <td title={text} style={{
-      fontSize, color, maxWidth,
-      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default'
-    }}>
-      {text}
-    </td>
-  )
-}
-
 export default function DashboardPage() {
   const { toast } = useOutletContext()
   const { profile } = useAuth()
@@ -87,6 +74,8 @@ export default function DashboardPage() {
   const [filterLM, setFilterLM] = useState('')
   const [filterABO, setFilterABO] = useState('')
   const [filterStore, setFilterStore] = useState('')
+  const [filterOwner, setFilterOwner] = useState('')
+  const [filterDept, setFilterDept] = useState('')
 
   const role = profile?.role
   const canRespondSatisfaction = ['store', 'abo', 'lm'].includes(role)
@@ -119,7 +108,7 @@ export default function DashboardPage() {
   }
 
   function refetch() {
-    if (role === 'admin') fetchDemands([])
+    if (role === 'admin' || role === 'owner') fetchDemands([])
     else if (myStores?.length > 0) fetchDemands(myStores)
   }
 
@@ -152,11 +141,15 @@ export default function DashboardPage() {
   const lmOptions = [...new Set(demands.map(d => d.lm_name).filter(Boolean))].sort()
   const aboOptions = [...new Set(demands.map(d => d.abo).filter(Boolean))].sort()
   const storeOptions = [...new Set(demands.map(d => d.store_name).filter(Boolean))].sort()
+  const ownerOptions = [...new Set(demands.map(d => d.action_owner).filter(Boolean))].sort()
+  const deptOptions = [...new Set(demands.map(d => d.department).filter(Boolean))].sort()
 
   const displayed = demands.filter(d => {
     if (filterLM && d.lm_name !== filterLM) return false
     if (filterABO && d.abo !== filterABO) return false
     if (filterStore && d.store_name !== filterStore) return false
+    if (filterOwner && d.action_owner !== filterOwner) return false
+    if (filterDept && d.department !== filterDept) return false
     return true
   })
 
@@ -164,9 +157,7 @@ export default function DashboardPage() {
   const completedDemands = displayed.filter(d => d.completed_at && d.created_at)
   const tatValues = completedDemands.map(d => calcTAT(d.created_at, d.completed_at)).filter(v => v !== null)
   const avgTAT = tatValues.length > 0 ? Math.round(tatValues.reduce((a, b) => a + b, 0) / tatValues.length) : null
-  const satisfiedCount = displayed.filter(d => d.satisfaction === 'satisfied').length
   const completedCount = displayed.filter(d => d.status === 'Done').length
-  const satisfactionRate = completedCount > 0 ? Math.round((satisfiedCount / completedCount) * 100) : null
 
   const stats = {
     total: displayed.length,
@@ -175,9 +166,10 @@ export default function DashboardPage() {
     pending: displayed.filter(d => !d.decision).length,
     done: completedCount,
     disputed: displayed.filter(d => d.satisfaction === 'not_satisfied').length,
+    clarification: displayed.filter(d => d.clarification_needed).length,
   }
 
-  const hasFilters = filterLM || filterABO || filterStore
+  const hasFilters = filterLM || filterABO || filterStore || filterOwner || filterDept
 
   const patchLabel = role === 'admin'
     ? 'All stores'
@@ -240,14 +232,15 @@ export default function DashboardPage() {
             <div className="stat-label">Avg TAT (days)</div>
             <div className="stat-value blue">{avgTAT !== null ? avgTAT : '—'}</div>
           </div>
-          <div className="stat-card" title="% of completed demands marked Satisfied by store/LM/ABO">
-            <div className="stat-label">Satisfaction Rate</div>
-            <div className="stat-value green">{satisfactionRate !== null ? `${satisfactionRate}%` : '—'}</div>
+          <div className="stat-card" style={stats.clarification > 0 ? { borderColor: 'var(--amber)' } : {}}>
+            <div className="stat-label">Needs Clarification</div>
+            <div className="stat-value amber">{stats.clarification}</div>
           </div>
         </div>
 
         <div className="table-wrap">
-          <div className="table-toolbar">
+          <div className="table-toolbar" style={{ flexWrap: 'wrap', gap: 8 }}>
+
             <select className="filter-select" value={filterLM} onChange={e => { setFilterLM(e.target.value); setFilterStore('') }}>
               <option value="">All LMs</option>
               {lmOptions.map(l => <option key={l}>{l}</option>)}
@@ -268,8 +261,21 @@ export default function DashboardPage() {
                 .map(s => <option key={s}>{s}</option>)}
             </select>
 
+            <select className="filter-select" value={filterOwner} onChange={e => setFilterOwner(e.target.value)}>
+              <option value="">All Owners</option>
+              {ownerOptions.map(o => <option key={o}>{o}</option>)}
+            </select>
+
+            <select className="filter-select" value={filterDept} onChange={e => setFilterDept(e.target.value)}>
+              <option value="">All Departments</option>
+              {deptOptions.map(d => <option key={d}>{d}</option>)}
+            </select>
+
             {hasFilters && (
-              <button className="btn btn-sm" onClick={() => { setFilterLM(''); setFilterABO(''); setFilterStore('') }}>
+              <button className="btn btn-sm" onClick={() => {
+                setFilterLM(''); setFilterABO(''); setFilterStore('')
+                setFilterOwner(''); setFilterDept('')
+              }}>
                 Clear filters
               </button>
             )}
@@ -283,9 +289,13 @@ export default function DashboardPage() {
               {Icons.inbox}
               <div className="empty-state-title">{hasFilters ? 'No demands match filters' : 'No demands yet'}</div>
               <div className="empty-state-sub">
-                {!hasFilters && myStores?.length === 0 && role !== 'admin'
-                  ? `No stores found for "${profile?.full_name}". Check store_master matches your profile name.`
-                  : hasFilters ? 'Try clearing the filters' : 'Click "Add Demand" to get started'}
+                {hasFilters
+                  ? 'Try clearing the filters'
+                  : role === 'owner'
+                    ? 'No demands are assigned to you yet.'
+                    : !hasFilters && myStores?.length === 0
+                      ? `No stores found for "${profile?.full_name}". Check store_master matches your profile name.`
+                      : 'Click "Add Demand" to get started'}
               </div>
             </div>
           ) : (
@@ -336,7 +346,33 @@ export default function DashboardPage() {
                           {d.decision === 'Reject' ? (d.reject_reason || '—') : '—'}
                         </td>
 
-                        <td>{d.status ? <Badge type={d.status} /> : '—'}</td>
+                        {/* Status + Clarification */}
+                        <td>
+                          {d.status ? <Badge type={d.status} /> : '—'}
+                          {d.clarification_needed && (
+                            <div style={{ marginTop: 4 }}>
+                              <span style={{
+                                fontSize: 10, fontWeight: 700, color: 'var(--amber)',
+                                textTransform: 'uppercase', letterSpacing: '0.04em'
+                              }}>
+                                ⚠ Needs Clarification
+                              </span>
+                              {d.clarification_note && (
+                                <div
+                                  title={d.clarification_note}
+                                  style={{
+                                    fontSize: 11, color: 'var(--amber)', marginTop: 2,
+                                    maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden',
+                                    textOverflow: 'ellipsis', cursor: 'default', lineHeight: 1.4,
+                                  }}
+                                >
+                                  {d.clarification_note}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+
                         <td style={{ fontSize: 12 }}>{d.promise_date || '—'}</td>
 
                         {/* Remarks — tooltip */}

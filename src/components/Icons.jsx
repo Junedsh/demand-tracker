@@ -79,6 +79,7 @@ export function Badge({ type, label }) {
     Pending: ['badge-pending', 'Pending'],
     satisfied: ['badge-accept', 'Satisfied ✓'],
     not_satisfied: ['badge-reject', 'Disputed ✗'],
+    Clarification: ['badge-pending', 'Clarification Needed'],
     '': ['badge-none', 'No status'],
   }
   const [cls, text] = map[type] ?? ['badge-none', type]

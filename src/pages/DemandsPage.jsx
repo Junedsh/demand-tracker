@@ -327,7 +327,31 @@ export default function DemandsPage() {
                           ? <span style={{ color: 'var(--danger)' }}>{d.reject_reason || '—'}</span>
                           : '—'}
                       </td>
-                      <td>{d.status ? <Badge type={d.status} /> : '—'}</td>
+                      <td>
+                        {d.status ? <Badge type={d.status} /> : '—'}
+                        {d.clarification_needed && (
+                          <div style={{ marginTop: 4 }}>
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, color: 'var(--amber)',
+                              textTransform: 'uppercase', letterSpacing: '0.04em'
+                            }}>
+                              ⚠ Needs Clarification
+                            </span>
+                            {d.clarification_note && (
+                              <div
+                                title={d.clarification_note}
+                                style={{
+                                  fontSize: 11, color: 'var(--amber)', marginTop: 2,
+                                  maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden',
+                                  textOverflow: 'ellipsis', cursor: 'default', lineHeight: 1.4,
+                                }}
+                              >
+                                {d.clarification_note}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </td>
                       <td style={{ fontSize: 12 }}>{d.promise_date || '—'}</td>
                       <td className="td-truncate" style={{ fontSize: 12, color: 'var(--text2)', maxWidth: 140 }}>
                         {d.remarks || '—'}

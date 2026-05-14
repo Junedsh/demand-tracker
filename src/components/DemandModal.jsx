@@ -39,10 +39,7 @@ export default function DemandModal({ demand, onClose, onSave, userProfile }) {
 
   async function fetchStores() {
     if (!userProfile) return
-    let query = supabase
-      .from('store_master')
-      .select('store_id, store_name, lm_name, abo')
-      .order('store_name')
+    let query = supabase.from('store_master').select('store_id, store_name, lm_name, abo').order('store_name')
     if (role === 'lm') query = query.eq('lm_name', userProfile.full_name)
     if (role === 'abo') query = query.eq('abo', userProfile.full_name)
     const { data } = await query
@@ -50,11 +47,7 @@ export default function DemandModal({ demand, onClose, onSave, userProfile }) {
   }
 
   async function fetchOwners() {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('full_name')
-      .eq('role', 'owner')
-      .order('full_name')
+    const { data, error } = await supabase.from('profiles').select('full_name').eq('role', 'owner').order('full_name')
     if (!error) setOwners((data ?? []).map(o => o.full_name).filter(Boolean))
   }
 
@@ -101,13 +94,19 @@ export default function DemandModal({ demand, onClose, onSave, userProfile }) {
     if (!form.original_ask.trim()) return setError('Ask is required')
     setSaving(true)
     try {
-      await onSave(form)
+      // When demand is edited/resubmitted, clear clarification flag
+      const saveData = isEdit
+        ? { ...form, clarification_needed: false, clarification_note: null }
+        : form
+      await onSave(saveData)
     } catch (e) {
       setError(e.message)
     } finally {
       setSaving(false)
     }
   }
+
+  const hasClarification = demand?.clarification_needed && demand?.clarification_note
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -119,6 +118,38 @@ export default function DemandModal({ demand, onClose, onSave, userProfile }) {
 
         <div className="modal-body">
           {error && <div className="auth-error" style={{ marginBottom: 16 }}>{error}</div>}
+
+          {/* Clarification banner — shown prominently when editing a flagged demand */}
+          {hasClarification && (
+            <div style={{
+              background: 'rgba(245,158,11,0.08)',
+              border: '1.5px solid var(--amber)',
+              borderRadius: 'var(--radius)',
+              padding: '12px 14px',
+              marginBottom: 16,
+              display: 'flex',
+              gap: 10,
+              alignItems: 'flex-start',
+            }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--amber)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+                style={{ width: 18, height: 18, flexShrink: 0, marginTop: 1 }}>
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--amber)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Clarification Requested by Owner
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>
+                  {demand.clarification_note}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>
+                  Please update the Ask below to address the owner's question, then save.
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Store */}
           <div className="field">
@@ -136,7 +167,7 @@ export default function DemandModal({ demand, onClose, onSave, userProfile }) {
             )}
           </div>
 
-          {/* LM + ABO — auto-filled */}
+          {/* LM + ABO */}
           <div className="field-row">
             <div className="field">
               <label>LM Name <span className="req">*</span></label>
@@ -151,23 +182,26 @@ export default function DemandModal({ demand, onClose, onSave, userProfile }) {
             </div>
             <div className="field">
               <label>ABO</label>
-              <input
-                type="text"
-                value={form.abo}
-                disabled
-                style={{ opacity: 0.7 }}
-                placeholder="Auto-filled from store"
-              />
+              <input type="text" value={form.abo} disabled style={{ opacity: 0.7 }} placeholder="Auto-filled from store" />
             </div>
           </div>
 
           {/* Ask */}
           <div className="field">
-            <label>Ask <span className="req">*</span></label>
+            <label>
+              Ask <span className="req">*</span>
+              {hasClarification && (
+                <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--amber)', fontWeight: 600 }}>
+                  ← Update this to address the clarification
+                </span>
+              )}
+            </label>
             <textarea
               value={form.original_ask}
               onChange={e => set('original_ask', e.target.value)}
               placeholder="What does the store need?"
+              style={hasClarification ? { borderColor: 'var(--amber)', minHeight: 100 } : {}}
+              autoFocus={hasClarification}
             />
           </div>
 
