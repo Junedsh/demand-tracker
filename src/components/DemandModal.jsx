@@ -3,12 +3,18 @@ import { Icons } from './Icons'
 import { supabase } from '../lib/supabase'
 
 const DEPARTMENTS = [
-  'Supply Chain / Operations',
+  'Supply Chain',
   'Commercial / Revenue',
   'Category Management',
-  'IT / Operations',
+  'Pharmacy & Compliance',
+  'Finance & Accounts',
+  'HR & Admin',
+  'IT Related',
   'Marketing',
-  'Store Operations / Facilities',
+  'Store Operations',
+  'Customer Experience',
+  'Medical Affairs',
+  'Maintenance',
   'Learning & Development',
 ]
 
