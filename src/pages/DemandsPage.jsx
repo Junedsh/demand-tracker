@@ -124,11 +124,27 @@ export default function DemandsPage() {
   }
 
   async function handleReview(reviewData) {
-    const { error } = await supabase.from('demands').update(reviewData).eq('id', reviewDemand.id)
+    const updateData = { ...reviewData }
+
+    if (reviewData.status === 'Done') {
+      // Set completion timestamp + reset satisfaction for fresh re-evaluation
+      updateData.completed_at = new Date().toISOString()
+      updateData.satisfaction = null
+      updateData.satisfaction_reason = null
+      updateData.satisfaction_by = null
+      updateData.satisfaction_at = null
+    }
+
+    if (reviewData.status === 'In Progress' || reviewData.status === 'Pending') {
+      // If owner rolls back status, clear completion date too
+      updateData.completed_at = null
+    }
+
+    const { error } = await supabase.from('demands').update(updateData).eq('id', reviewDemand.id)
     if (error) throw error
     toast('Review saved', 'success')
     setReviewDemand(null)
-    refetch()
+    refetch() // or fetchMyDemands() in MyActionsPage
   }
 
   async function handleSatisfaction({ satisfaction, satisfaction_reason }) {

@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Badge, Icons } from '../components/Icons'
+import SatisfactionModal from '../components/SatisfactionModal'
 
 const STORAGE_KEY = 'demand_tracker_selected_store'
 
@@ -15,13 +16,10 @@ export default function StoreViewPage() {
   const [demands, setDemands] = useState([])
   const [loading, setLoading] = useState(false)
   const [storesLoading, setStoresLoading] = useState(true)
+  const [satisfactionDemand, setSatisfactionDemand] = useState(null)
 
-  // Load all stores from store_master on mount
-  useEffect(() => {
-    fetchStores()
-  }, [])
+  useEffect(() => { fetchStores() }, [])
 
-  // Fetch demands whenever selectedStore changes
   useEffect(() => {
     if (selectedStore) {
       localStorage.setItem(STORAGE_KEY, selectedStore)
@@ -33,10 +31,7 @@ export default function StoreViewPage() {
 
   async function fetchStores() {
     setStoresLoading(true)
-    const { data } = await supabase
-      .from('store_master')
-      .select('store_name, lm_name, abo')
-      .order('store_name')
+    const { data } = await supabase.from('store_master').select('store_name, lm_name, abo').order('store_name')
     setAllStores(data ?? [])
     setStoresLoading(false)
   }
@@ -44,19 +39,36 @@ export default function StoreViewPage() {
   async function fetchDemands(storeName) {
     setLoading(true)
     const { data, error } = await supabase
-      .from('demands')
-      .select('*')
-      .eq('store_name', storeName)
-      .order('created_at', { ascending: false })
+      .from('demands').select('*').eq('store_name', storeName).order('created_at', { ascending: false })
     if (error) toast(error.message, 'error')
     else setDemands(data ?? [])
     setLoading(false)
+  }
+
+  async function handleSatisfaction({ satisfaction, satisfaction_reason }) {
+    const updateData = {
+      satisfaction,
+      satisfaction_reason,
+      satisfaction_by: selectedStore,
+      satisfaction_at: new Date().toISOString(),
+      ...(satisfaction === 'not_satisfied' && { status: 'In Progress' }),
+    }
+    const { error } = await supabase.from('demands').update(updateData).eq('id', satisfactionDemand.id)
+    if (error) { toast(error.message, 'error'); return }
+    toast(
+      satisfaction === 'satisfied' ? 'Marked as satisfied ✓' : 'Dispute raised — owner will be notified',
+      satisfaction === 'satisfied' ? 'success' : 'error'
+    )
+    setSatisfactionDemand(null)
+    fetchDemands(selectedStore)
   }
 
   const selectedStoreInfo = allStores.find(s => s.store_name === selectedStore)
   const accepted = demands.filter(d => d.decision === 'Accept').length
   const rejected = demands.filter(d => d.decision === 'Reject').length
   const pending = demands.filter(d => !d.decision).length
+  const disputed = demands.filter(d => d.satisfaction === 'not_satisfied').length
+  const awaitingResponse = demands.filter(d => d.status === 'Done' && !d.satisfaction).length
 
   return (
     <>
@@ -93,9 +105,7 @@ export default function StoreViewPage() {
             <option value="">— Select your store —</option>
             {storesLoading
               ? <option disabled>Loading stores…</option>
-              : allStores.map(s => (
-                <option key={s.store_name} value={s.store_name}>{s.store_name}</option>
-              ))
+              : allStores.map(s => <option key={s.store_name} value={s.store_name}>{s.store_name}</option>)
             }
           </select>
           {selectedStore && (
@@ -105,9 +115,9 @@ export default function StoreViewPage() {
           )}
         </div>
 
-        {/* Only show stats + table if a store is selected */}
         {selectedStore && (
           <>
+            {/* Stats */}
             <div className="stats-grid">
               <div className="stat-card">
                 <div className="stat-label">Total</div>
@@ -125,7 +135,39 @@ export default function StoreViewPage() {
                 <div className="stat-label">Awaiting Review</div>
                 <div className="stat-value amber">{pending}</div>
               </div>
+              <div className="stat-card" style={awaitingResponse > 0 ? { borderColor: 'var(--amber)' } : {}}>
+                <div className="stat-label">Needs Your Response</div>
+                <div className="stat-value amber">{awaitingResponse}</div>
+              </div>
+              {disputed > 0 && (
+                <div className="stat-card" style={{ borderColor: 'var(--danger)' }}>
+                  <div className="stat-label">Disputed</div>
+                  <div className="stat-value red">{disputed}</div>
+                </div>
+              )}
             </div>
+
+            {/* Prompt banner if there are demands awaiting response */}
+            {awaitingResponse > 0 && (
+              <div style={{
+                background: 'rgba(var(--amber-rgb, 245,158,11), 0.08)',
+                border: '1px solid var(--amber)',
+                borderRadius: 'var(--radius)',
+                padding: '12px 16px',
+                marginBottom: 16,
+                fontSize: 13,
+                color: 'var(--text)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+              }}>
+                <span style={{ fontSize: 18 }}>⏳</span>
+                <span>
+                  <strong>{awaitingResponse} demand{awaitingResponse > 1 ? 's' : ''}</strong> marked Done by the owner —
+                  please respond whether they were fulfilled to your satisfaction.
+                </span>
+              </div>
+            )}
 
             <div className="table-wrap">
               {loading ? (
@@ -150,23 +192,76 @@ export default function StoreViewPage() {
                         <th>Promise Date</th>
                         <th>Status</th>
                         <th>Remarks</th>
+                        <th>Satisfaction</th>
                       </tr>
                     </thead>
                     <tbody>
                       {demands.map(d => (
-                        <tr key={d.id}>
-                          <td className="td-truncate">{d.original_ask}</td>
+                        <tr
+                          key={d.id}
+                          style={d.status === 'Done' && !d.satisfaction
+                            ? { background: 'rgba(245,158,11,0.05)' }
+                            : d.satisfaction === 'not_satisfied'
+                              ? { background: 'rgba(220,53,69,0.05)' }
+                              : {}
+                          }
+                        >
+                          {/* Ask — full wrap, no truncation */}
+                          <td style={{ fontSize: 13, maxWidth: 240, whiteSpace: 'normal', lineHeight: 1.5 }}>
+                            {d.original_ask}
+                          </td>
+
                           <td style={{ fontSize: 12 }}>{d.action_owner || '—'}</td>
                           <td style={{ fontSize: 11, color: 'var(--text3)' }}>{d.department || '—'}</td>
                           <td><span className="month-chip">{d.month || '—'}</span></td>
                           <td><Badge type={d.decision || ''} /></td>
-                          <td className="td-truncate" style={{ fontSize: 12, color: 'var(--danger)' }}>
+
+                          {/* Rejection reason — tooltip on truncate */}
+                          <td
+                            title={d.decision === 'Reject' ? (d.reject_reason || '') : ''}
+                            style={{ fontSize: 12, color: 'var(--danger)', maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}
+                          >
                             {d.decision === 'Reject' ? (d.reject_reason || '—') : '—'}
                           </td>
+
                           <td style={{ fontSize: 12 }}>{d.promise_date || '—'}</td>
                           <td>{d.status ? <Badge type={d.status} /> : '—'}</td>
-                          <td className="td-truncate" style={{ fontSize: 12, color: 'var(--text2)', maxWidth: 160 }}>
+
+                          {/* Remarks — tooltip on truncate */}
+                          <td
+                            title={d.remarks || ''}
+                            style={{ fontSize: 12, color: 'var(--text2)', maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}
+                          >
                             {d.remarks || '—'}
+                          </td>
+
+                          {/* Satisfaction column */}
+                          <td style={{ minWidth: 120 }}>
+                            {!d.satisfaction && d.status === 'Done' ? (
+                              <button
+                                className="btn btn-sm"
+                                style={{ fontSize: 11, background: 'var(--amber)', color: '#fff', border: 'none', whiteSpace: 'nowrap' }}
+                                onClick={() => setSatisfactionDemand(d)}
+                              >
+                                Respond
+                              </button>
+                            ) : d.satisfaction === 'satisfied' ? (
+                              <Badge type="satisfied" />
+                            ) : d.satisfaction === 'not_satisfied' ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                <Badge type="not_satisfied" />
+                                {d.satisfaction_reason && (
+                                  <span
+                                    title={d.satisfaction_reason}
+                                    style={{ fontSize: 10, color: 'var(--danger)', maxWidth: 140, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}
+                                  >
+                                    {d.satisfaction_reason}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -178,6 +273,14 @@ export default function StoreViewPage() {
           </>
         )}
       </div>
+
+      {satisfactionDemand && (
+        <SatisfactionModal
+          demand={satisfactionDemand}
+          onClose={() => setSatisfactionDemand(null)}
+          onSave={handleSatisfaction}
+        />
+      )}
     </>
   )
 }

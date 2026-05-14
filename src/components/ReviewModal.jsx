@@ -88,10 +88,9 @@ export default function ReviewModal({ demand, onClose, onSave }) {
             <div className="field">
               <label>Promise Date</label>
               <input
-                type="text"
+                type="date"
                 value={promiseDate}
                 onChange={e => setPromiseDate(e.target.value)}
-                placeholder="e.g. 25-May, 08-Jun"
               />
               <div className="field-hint">When will this be resolved?</div>
             </div>
