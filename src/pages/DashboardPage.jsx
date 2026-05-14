@@ -4,9 +4,10 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Badge, Icons } from '../components/Icons'
 import DemandModal from '../components/DemandModal'
+import SatisfactionModal from '../components/SatisfactionModal'
 
 function downloadCSV(data) {
-  const headers = ['Store', 'ABO', 'LM', 'Ask', 'Owner', 'Department', 'Decision', 'Rejection Reason', 'Status', 'Promise Date', 'Remarks']
+  const headers = ['Store', 'ABO', 'LM', 'Ask', 'Owner', 'Department', 'Decision', 'Rejection Reason', 'Status', 'Promise Date', 'Remarks', 'Satisfaction', 'Satisfaction Reason', 'Satisfaction By']
   const rows = data.map(d => [
     d.store_name || '',
     d.abo || '',
@@ -19,6 +20,9 @@ function downloadCSV(data) {
     d.status || '',
     d.promise_date || '',
     d.remarks || '',
+    d.satisfaction || '',
+    d.satisfaction_reason || '',
+    d.satisfaction_by || '',
   ])
   const csv = [headers, ...rows]
     .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
@@ -47,12 +51,14 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [myStores, setMyStores] = useState(null)
+  const [satisfactionDemand, setSatisfactionDemand] = useState(null)
 
   const [filterLM, setFilterLM] = useState('')
   const [filterABO, setFilterABO] = useState('')
   const [filterStore, setFilterStore] = useState('')
 
   const role = profile?.role
+  const canRespondSatisfaction = ['store', 'abo', 'lm'].includes(role)
 
   useEffect(() => { if (profile) fetchMyStores() }, [profile])
 
@@ -93,6 +99,24 @@ export default function DashboardPage() {
     refetch()
   }
 
+  async function handleSatisfaction({ satisfaction, satisfaction_reason }) {
+    const updateData = {
+      satisfaction,
+      satisfaction_reason,
+      satisfaction_by: profile?.full_name || profile?.email,
+      satisfaction_at: new Date().toISOString(),
+      ...(satisfaction === 'not_satisfied' && { status: 'In Progress' }),
+    }
+    const { error } = await supabase.from('demands').update(updateData).eq('id', satisfactionDemand.id)
+    if (error) throw error
+    toast(
+      satisfaction === 'satisfied' ? 'Marked as satisfied ✓' : 'Dispute raised — status reset to In Progress',
+      satisfaction === 'satisfied' ? 'success' : 'error'
+    )
+    setSatisfactionDemand(null)
+    refetch()
+  }
+
   const lmOptions = [...new Set(demands.map(d => d.lm_name).filter(Boolean))].sort()
   const aboOptions = [...new Set(demands.map(d => d.abo).filter(Boolean))].sort()
   const storeOptions = [...new Set(demands.map(d => d.store_name).filter(Boolean))].sort()
@@ -109,6 +133,7 @@ export default function DashboardPage() {
     accepted: displayed.filter(d => d.decision === 'Accept').length,
     rejected: displayed.filter(d => d.decision === 'Reject').length,
     pending: displayed.filter(d => !d.decision).length,
+    disputed: displayed.filter(d => d.satisfaction === 'not_satisfied').length,
   }
 
   const hasFilters = filterLM || filterABO || filterStore
@@ -133,7 +158,7 @@ export default function DashboardPage() {
             className="btn"
             onClick={() => downloadCSV(displayed)}
             disabled={displayed.length === 0}
-            title="Download as CSV — opens in Excel"
+            title="Download as CSV"
           >
             {DownloadIcon} Export
           </button>
@@ -144,6 +169,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="page-body">
+        {/* Stats */}
         <div className="stats-grid">
           <div className="stat-card">
             <div className="stat-label">Total Demands</div>
@@ -160,6 +186,10 @@ export default function DashboardPage() {
           <div className="stat-card">
             <div className="stat-label">Pending Review</div>
             <div className="stat-value amber">{stats.pending}</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">Disputed</div>
+            <div className="stat-value red">{stats.disputed}</div>
           </div>
         </div>
 
@@ -221,6 +251,7 @@ export default function DashboardPage() {
                     <th>Status</th>
                     <th>Promise Date</th>
                     <th>Remarks</th>
+                    <th>Satisfaction</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -243,6 +274,32 @@ export default function DashboardPage() {
                       <td className="td-truncate" style={{ fontSize: 12, color: 'var(--text2)', maxWidth: 160 }}>
                         {d.remarks || '—'}
                       </td>
+                      <td style={{ minWidth: 110 }}>
+                        {!d.satisfaction && d.status === 'Done' && canRespondSatisfaction ? (
+                          <button
+                            className="btn btn-sm"
+                            style={{ fontSize: 11, background: 'var(--amber)', color: '#fff', border: 'none' }}
+                            onClick={() => setSatisfactionDemand(d)}
+                          >
+                            Respond
+                          </button>
+                        ) : !d.satisfaction && d.status === 'Done' ? (
+                          <span style={{ fontSize: 11, color: 'var(--text3)' }}>Awaiting</span>
+                        ) : d.satisfaction === 'satisfied' ? (
+                          <Badge type="satisfied" />
+                        ) : d.satisfaction === 'not_satisfied' ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <Badge type="not_satisfied" />
+                            {d.satisfaction_reason && (
+                              <span style={{ fontSize: 10, color: 'var(--danger)', maxWidth: 140, whiteSpace: 'normal', lineHeight: 1.3 }}>
+                                {d.satisfaction_reason}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -254,6 +311,9 @@ export default function DashboardPage() {
 
       {showAdd && (
         <DemandModal userProfile={profile} onClose={() => setShowAdd(false)} onSave={handleSave} />
+      )}
+      {satisfactionDemand && (
+        <SatisfactionModal demand={satisfactionDemand} onClose={() => setSatisfactionDemand(null)} onSave={handleSatisfaction} />
       )}
     </>
   )

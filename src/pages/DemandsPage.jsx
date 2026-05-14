@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { Badge, Icons } from '../components/Icons'
 import DemandModal from '../components/DemandModal'
 import ReviewModal from '../components/ReviewModal'
+import SatisfactionModal from '../components/SatisfactionModal'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
@@ -23,12 +24,15 @@ export default function DemandsPage() {
   const [filterDecision, setFilterDecision] = useState('')
   const [filterMonth, setFilterMonth] = useState('')
   const [filterOwner, setFilterOwner] = useState('')
+  const [filterSatisfaction, setFilterSatisfaction] = useState('')
 
   const [editDemand, setEditDemand] = useState(null)
   const [reviewDemand, setReviewDemand] = useState(null)
+  const [satisfactionDemand, setSatisfactionDemand] = useState(null)
   const [showAdd, setShowAdd] = useState(false)
 
   const role = profile?.role
+  const canRespondSatisfaction = ['store', 'abo', 'lm'].includes(role)
 
   useEffect(() => { if (profile) fetchMyStores() }, [profile])
 
@@ -40,7 +44,7 @@ export default function DemandsPage() {
   }, [myStores])
 
   async function fetchMyStores() {
-    if (role === 'admin') { setMyStores([]); return }
+    if (role === 'admin' || role === 'owner') { setMyStores([]); return }
     const col = role === 'lm' ? 'lm_name' : 'abo'
     const { data } = await supabase.from('store_master').select('store_name').eq(col, profile.full_name)
     setMyStores((data ?? []).map(s => s.store_name))
@@ -61,7 +65,6 @@ export default function DemandsPage() {
     else if (myStores?.length > 0) fetchDemands(myStores)
   }
 
-  // Dropdown options
   const lmOptions = [...new Set(demands.map(d => d.lm_name).filter(Boolean))].sort()
   const aboOptions = [...new Set(demands.map(d => d.abo).filter(Boolean))].sort()
   const storeOptions = [...new Set(demands.map(d => d.store_name).filter(Boolean))].sort()
@@ -78,15 +81,19 @@ export default function DemandsPage() {
     if (filterDecision && d.decision !== filterDecision) return false
     if (filterMonth && d.month !== filterMonth) return false
     if (filterOwner && d.action_owner !== filterOwner) return false
+    if (filterSatisfaction === 'satisfied' && d.satisfaction !== 'satisfied') return false
+    if (filterSatisfaction === 'not_satisfied' && d.satisfaction !== 'not_satisfied') return false
+    if (filterSatisfaction === 'awaiting' && !(d.status === 'Done' && !d.satisfaction)) return false
     return true
   })
 
   function clearAll() {
     setSearch(''); setFilterLM(''); setFilterABO(''); setFilterStore('')
     setFilterDept(''); setFilterDecision(''); setFilterMonth(''); setFilterOwner('')
+    setFilterSatisfaction('')
   }
 
-  const hasFilters = search || filterLM || filterABO || filterStore || filterDept || filterDecision || filterMonth || filterOwner
+  const hasFilters = search || filterLM || filterABO || filterStore || filterDept || filterDecision || filterMonth || filterOwner || filterSatisfaction
 
   async function handleAdd(form) {
     const { error } = await supabase.from('demands').insert([form])
@@ -98,8 +105,6 @@ export default function DemandsPage() {
 
   async function handleEdit(form) {
     const original = editDemand
-
-    // If owner changed — clear previous review fields
     const ownerChanged = form.action_owner !== original.action_owner
     const updateData = {
       ...form,
@@ -111,7 +116,6 @@ export default function DemandsPage() {
         remarks: null,
       })
     }
-
     const { error } = await supabase.from('demands').update(updateData).eq('id', original.id)
     if (error) throw error
     toast(ownerChanged ? 'Demand reassigned — review cleared' : 'Demand updated', 'success')
@@ -125,6 +129,66 @@ export default function DemandsPage() {
     toast('Review saved', 'success')
     setReviewDemand(null)
     refetch()
+  }
+
+  async function handleSatisfaction({ satisfaction, satisfaction_reason }) {
+    const updateData = {
+      satisfaction,
+      satisfaction_reason,
+      satisfaction_by: profile?.full_name || profile?.email,
+      satisfaction_at: new Date().toISOString(),
+      // flip back to In Progress if not satisfied
+      ...(satisfaction === 'not_satisfied' && { status: 'In Progress' }),
+    }
+    const { error } = await supabase.from('demands').update(updateData).eq('id', satisfactionDemand.id)
+    if (error) throw error
+    toast(
+      satisfaction === 'satisfied' ? 'Marked as satisfied ✓' : 'Dispute raised — status reset to In Progress',
+      satisfaction === 'satisfied' ? 'success' : 'error'
+    )
+    setSatisfactionDemand(null)
+    refetch()
+  }
+
+  // Satisfaction badge helper
+  function SatisfactionBadge({ demand }) {
+    if (demand.status !== 'Done' && demand.satisfaction !== 'satisfied') {
+      if (demand.satisfaction === 'not_satisfied') {
+        // show even if status flipped back
+      } else {
+        return <span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>
+      }
+    }
+    if (!demand.satisfaction) {
+      if (demand.status === 'Done' && canRespondSatisfaction) {
+        return (
+          <button
+            className="btn btn-sm"
+            style={{ fontSize: 11, background: 'var(--amber)', color: '#fff', border: 'none' }}
+            onClick={() => setSatisfactionDemand(demand)}
+          >
+            Respond
+          </button>
+        )
+      }
+      if (demand.status === 'Done') {
+        return <span style={{ fontSize: 11, color: 'var(--text3)' }}>Awaiting</span>
+      }
+      return <span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>
+    }
+    if (demand.satisfaction === 'satisfied') {
+      return <Badge type="satisfied" />
+    }
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Badge type="not_satisfied" />
+        {demand.satisfaction_reason && (
+          <span style={{ fontSize: 10, color: 'var(--danger)', maxWidth: 140, whiteSpace: 'normal', lineHeight: 1.3 }}>
+            {demand.satisfaction_reason}
+          </span>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -142,7 +206,6 @@ export default function DemandsPage() {
       <div className="page-body">
         <div className="table-wrap">
           <div className="table-toolbar" style={{ flexWrap: 'wrap', gap: 8 }}>
-
             <div className="search-wrap">
               {Icons.search}
               <input className="search-input" placeholder="Search store, LM, ask…" value={search} onChange={e => setSearch(e.target.value)} />
@@ -189,6 +252,13 @@ export default function DemandsPage() {
               {owners.map(o => <option key={o}>{o}</option>)}
             </select>
 
+            <select className="filter-select" value={filterSatisfaction} onChange={e => setFilterSatisfaction(e.target.value)}>
+              <option value="">All satisfaction</option>
+              <option value="satisfied">Satisfied</option>
+              <option value="not_satisfied">Disputed</option>
+              <option value="awaiting">Awaiting response</option>
+            </select>
+
             {hasFilters && (
               <button className="btn btn-sm" onClick={clearAll}>Clear all</button>
             )}
@@ -220,6 +290,7 @@ export default function DemandsPage() {
                     <th>Status</th>
                     <th>Promise</th>
                     <th>Remarks</th>
+                    <th>Satisfaction</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -245,6 +316,9 @@ export default function DemandsPage() {
                       <td className="td-truncate" style={{ fontSize: 12, color: 'var(--text2)', maxWidth: 140 }}>
                         {d.remarks || '—'}
                       </td>
+                      <td style={{ minWidth: 100 }}>
+                        <SatisfactionBadge demand={d} />
+                      </td>
                       <td>
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button className="btn btn-sm btn-icon" onClick={() => setEditDemand(d)} title="Edit" aria-label="Edit demand">
@@ -269,6 +343,7 @@ export default function DemandsPage() {
       {showAdd && <DemandModal userProfile={profile} onClose={() => setShowAdd(false)} onSave={handleAdd} />}
       {editDemand && <DemandModal demand={editDemand} userProfile={profile} onClose={() => setEditDemand(null)} onSave={handleEdit} />}
       {reviewDemand && <ReviewModal demand={reviewDemand} onClose={() => setReviewDemand(null)} onSave={handleReview} />}
+      {satisfactionDemand && <SatisfactionModal demand={satisfactionDemand} onClose={() => setSatisfactionDemand(null)} onSave={handleSatisfaction} />}
     </>
   )
 }

@@ -39,7 +39,7 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="you@zenohealth.in"
+              placeholder="you@zeno.health"
               autoFocus
             />
           </div>
