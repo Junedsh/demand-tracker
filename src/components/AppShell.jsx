@@ -10,6 +10,8 @@ const ROLE_LABELS = {
   lm: 'Line Manager',
   owner: 'Action Owner',
   store: 'Store Staff',
+  manager: 'Manager',
+  director: 'Director',
 }
 
 const CollapseIcon = ({ collapsed }) => (
@@ -33,9 +35,9 @@ export default function AppShell() {
     navigate('/login')
   }
 
-  const canSeeDashboard = ['admin', 'lm', 'abo', 'owner'].includes(role)
+  const canSeeDashboard = ['admin', 'lm', 'abo', 'owner', 'manager', 'director'].includes(role)
   const canSeeDemands = ['admin', 'lm', 'abo'].includes(role)
-  const canSeeActions = ['admin', 'owner'].includes(role)
+  const canSeeActions = ['admin', 'owner', 'manager', 'director'].includes(role)
   const canSeeStore = role === 'store'
 
   return (
@@ -47,7 +49,6 @@ export default function AppShell() {
         transition: 'width 0.22s ease, min-width 0.22s ease',
       }}>
 
-        {/* Brand */}
         <div className="sidebar-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           {!collapsed && (
             <div>
@@ -59,24 +60,16 @@ export default function AppShell() {
             onClick={() => setCollapsed(c => !c)}
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--text2)',
-              padding: 4,
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              marginLeft: collapsed ? 'auto' : undefined,
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--text2)', padding: 4, borderRadius: 6,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0, marginLeft: collapsed ? 'auto' : undefined,
             }}
           >
             <CollapseIcon collapsed={collapsed} />
           </button>
         </div>
 
-        {/* Nav */}
         <div className="sidebar-section">
           {!collapsed && <div className="sidebar-section-label">Menu</div>}
 
@@ -85,8 +78,7 @@ export default function AppShell() {
               title={collapsed ? 'Dashboard' : undefined}
               style={{ justifyContent: collapsed ? 'center' : undefined, padding: collapsed ? '10px 0' : undefined }}
             >
-              {Icons.home}
-              {!collapsed && 'Dashboard'}
+              {Icons.home}{!collapsed && 'Dashboard'}
             </NavLink>
           )}
 
@@ -95,8 +87,7 @@ export default function AppShell() {
               title={collapsed ? 'All Demands' : undefined}
               style={{ justifyContent: collapsed ? 'center' : undefined, padding: collapsed ? '10px 0' : undefined }}
             >
-              {Icons.list}
-              {!collapsed && 'All Demands'}
+              {Icons.list}{!collapsed && 'All Demands'}
             </NavLink>
           )}
 
@@ -105,8 +96,7 @@ export default function AppShell() {
               title={collapsed ? 'My Actions' : undefined}
               style={{ justifyContent: collapsed ? 'center' : undefined, padding: collapsed ? '10px 0' : undefined }}
             >
-              {Icons.check}
-              {!collapsed && 'My Actions'}
+              {Icons.check}{!collapsed && 'My Actions'}
             </NavLink>
           )}
 
@@ -115,8 +105,7 @@ export default function AppShell() {
               title={collapsed ? 'My Demands' : undefined}
               style={{ justifyContent: collapsed ? 'center' : undefined, padding: collapsed ? '10px 0' : undefined }}
             >
-              {Icons.store}
-              {!collapsed && 'My Demands'}
+              {Icons.store}{!collapsed && 'My Demands'}
             </NavLink>
           )}
 
@@ -124,19 +113,15 @@ export default function AppShell() {
             title={collapsed ? 'Profile' : undefined}
             style={{ justifyContent: collapsed ? 'center' : undefined, padding: collapsed ? '10px 0' : undefined }}
           >
-            {Icons.user}
-            {!collapsed && 'Profile'}
+            {Icons.user}{!collapsed && 'Profile'}
           </NavLink>
         </div>
 
-        {/* Footer */}
         <div className="sidebar-footer">
           {collapsed ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '8px 0' }}>
               <div className="user-avatar" title={profile?.full_name ?? 'User'}>{initials}</div>
-              <button className="sign-out-btn" onClick={handleSignOut} title="Sign out" aria-label="Sign out">
-                {Icons.logout}
-              </button>
+              <button className="sign-out-btn" onClick={handleSignOut} title="Sign out">{Icons.logout}</button>
             </div>
           ) : (
             <div className="user-chip">
@@ -145,9 +130,7 @@ export default function AppShell() {
                 <div className="user-name">{profile?.full_name ?? 'User'}</div>
                 <div className="user-role">{ROLE_LABELS[role] ?? role}</div>
               </div>
-              <button className="sign-out-btn" onClick={handleSignOut} title="Sign out" aria-label="Sign out">
-                {Icons.logout}
-              </button>
+              <button className="sign-out-btn" onClick={handleSignOut} title="Sign out">{Icons.logout}</button>
             </div>
           )}
         </div>

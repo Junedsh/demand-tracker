@@ -84,13 +84,16 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (myStores === null) return
-    if (role === 'admin' || role === 'owner') fetchDemands([])
+    if (role === 'admin' || role === 'owner' || role === 'manager' || role === 'director') fetchDemands([])
     else if (myStores.length > 0) fetchDemands(myStores)
     else setLoading(false)
   }, [myStores])
 
   async function fetchMyStores() {
-    if (role === 'admin' || role === 'owner') { setMyStores([]); return }
+    if (role === 'admin' || role === 'owner' || role === 'manager' || role === 'director') {
+      setMyStores([])
+      return
+    }
     const col = role === 'lm' ? 'lm_name' : 'abo'
     const { data } = await supabase.from('store_master').select('store_name').eq(col, profile.full_name)
     setMyStores((data ?? []).map(s => s.store_name))
@@ -99,8 +102,30 @@ export default function DashboardPage() {
   async function fetchDemands(storeNames) {
     setLoading(true)
     let query = supabase.from('demands').select('*').order('created_at', { ascending: false }).limit(50)
-    if (role === 'owner') query = query.ilike('action_owner', `%${profile.full_name}%`)
-    else if (storeNames.length > 0) query = query.in('store_name', storeNames)
+
+    if (role === 'owner') {
+      query = query.ilike('action_owner', `%${profile.full_name}%`)
+
+    } else if (role === 'manager') {
+      const { data: reportees } = await supabase
+        .from('profiles').select('full_name')
+        .eq('manager', profile.full_name).eq('role', 'owner')
+      const names = (reportees ?? []).map(r => r.full_name).filter(Boolean)
+      if (names.length === 0) { setDemands([]); setLoading(false); return }
+      query = query.in('action_owner', names)
+
+    } else if (role === 'director') {
+      const { data: reportees } = await supabase
+        .from('profiles').select('full_name')
+        .eq('director', profile.full_name).eq('role', 'owner')
+      const names = (reportees ?? []).map(r => r.full_name).filter(Boolean)
+      if (names.length === 0) { setDemands([]); setLoading(false); return }
+      query = query.in('action_owner', names)
+
+    } else if (storeNames.length > 0) {
+      query = query.in('store_name', storeNames)
+    }
+
     const { data, error } = await query
     if (error) toast(error.message, 'error')
     else setDemands(data ?? [])
@@ -108,7 +133,7 @@ export default function DashboardPage() {
   }
 
   function refetch() {
-    if (role === 'admin' || role === 'owner') fetchDemands([])
+    if (role === 'admin' || role === 'owner' || role === 'manager' || role === 'director') fetchDemands([])
     else if (myStores?.length > 0) fetchDemands(myStores)
   }
 
@@ -179,7 +204,11 @@ export default function DashboardPage() {
         ? `${profile?.full_name}'s patch · ${myStores?.length ?? '…'} stores`
         : role === 'owner'
           ? `Demands assigned to ${profile?.full_name}`
-          : ''
+          : role === 'manager'
+            ? `Team demands — ${profile?.full_name}`
+            : role === 'director'
+              ? `All team demands — ${profile?.full_name}`
+              : ''
 
   return (
     <>
@@ -192,7 +221,7 @@ export default function DashboardPage() {
           <button className="btn" onClick={() => downloadCSV(displayed)} disabled={displayed.length === 0} title="Download as CSV">
             {DownloadIcon} Export
           </button>
-          {role !== 'owner' && (
+          {role !== 'owner' && role !== 'manager' && role !== 'director' && (
             <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
               {Icons.plus} Add Demand
             </button>
@@ -291,9 +320,9 @@ export default function DashboardPage() {
               <div className="empty-state-sub">
                 {hasFilters
                   ? 'Try clearing the filters'
-                  : role === 'owner'
-                    ? 'No demands are assigned to you yet.'
-                    : !hasFilters && myStores?.length === 0
+                  : role === 'owner' || role === 'manager' || role === 'director'
+                    ? 'No demands found for your team yet.'
+                    : myStores?.length === 0
                       ? `No stores found for "${profile?.full_name}". Check store_master matches your profile name.`
                       : 'Click "Add Demand" to get started'}
               </div>
