@@ -7,6 +7,16 @@ import SatisfactionModal from '../components/SatisfactionModal'
 
 const STORAGE_KEY = 'demand_tracker_selected_store'
 
+function getMonthRange() {
+  const now = new Date()
+  const first = new Date(now.getFullYear(), now.getMonth(), 1)
+  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  return {
+    from: first.toISOString().slice(0, 10),
+    to: last.toISOString().slice(0, 10),
+  }
+}
+
 export default function StoreViewPage() {
   const { toast } = useOutletContext()
   const { profile } = useAuth()
@@ -17,6 +27,10 @@ export default function StoreViewPage() {
   const [loading, setLoading] = useState(false)
   const [storesLoading, setStoresLoading] = useState(true)
   const [satisfactionDemand, setSatisfactionDemand] = useState(null)
+
+  const defaultRange = getMonthRange()
+  const [filterFrom, setFilterFrom] = useState(defaultRange.from)
+  const [filterTo, setFilterTo] = useState(defaultRange.to)
 
   useEffect(() => { fetchStores() }, [])
 
@@ -64,11 +78,22 @@ export default function StoreViewPage() {
   }
 
   const selectedStoreInfo = allStores.find(s => s.store_name === selectedStore)
-  const accepted = demands.filter(d => d.decision === 'Accept').length
-  const rejected = demands.filter(d => d.decision === 'Reject').length
-  const pending = demands.filter(d => !d.decision).length
-  const disputed = demands.filter(d => d.satisfaction === 'not_satisfied').length
-  const awaitingResponse = demands.filter(d => d.status === 'Done' && !d.satisfaction).length
+
+  // Apply date filter client-side
+  const filtered = demands.filter(d => {
+    if (filterFrom && d.created_at && d.created_at.slice(0, 10) < filterFrom) return false
+    if (filterTo && d.created_at && d.created_at.slice(0, 10) > filterTo) return false
+    return true
+  })
+
+  const accepted = filtered.filter(d => d.decision === 'Accept').length
+  const rejected = filtered.filter(d => d.decision === 'Reject').length
+  const pending = filtered.filter(d => !d.decision).length
+  const disputed = filtered.filter(d => d.satisfaction === 'not_satisfied').length
+  const awaitingResponse = filtered.filter(d => d.status === 'Done' && !d.satisfaction).length
+  const clarificationCount = filtered.filter(d => d.clarification_needed).length
+
+  const dateFiltersChanged = filterFrom !== defaultRange.from || filterTo !== defaultRange.to
 
   return (
     <>
@@ -86,21 +111,14 @@ export default function StoreViewPage() {
       <div className="page-body">
 
         {/* Store selector */}
-        <div style={{
-          background: 'var(--surface)', border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-lg)', padding: 20, marginBottom: 24
-        }}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 20, marginBottom: 24 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
             Select Your Store
           </div>
           <select
             value={selectedStore}
             onChange={e => setSelectedStore(e.target.value)}
-            style={{
-              width: '100%', maxWidth: 420, padding: '9px 12px', fontSize: 14,
-              border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-              background: 'var(--surface)', color: 'var(--text)', fontFamily: 'var(--font)',
-            }}
+            style={{ width: '100%', maxWidth: 420, padding: '9px 12px', fontSize: 14, border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface)', color: 'var(--text)', fontFamily: 'var(--font)' }}
           >
             <option value="">— Select your store —</option>
             {storesLoading
@@ -117,11 +135,11 @@ export default function StoreViewPage() {
 
         {selectedStore && (
           <>
-            {/* Stats */}
+            {/* Stats — based on filtered data */}
             <div className="stats-grid">
               <div className="stat-card">
                 <div className="stat-label">Total</div>
-                <div className="stat-value blue">{demands.length}</div>
+                <div className="stat-value blue">{filtered.length}</div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">Accepted</div>
@@ -145,38 +163,72 @@ export default function StoreViewPage() {
                   <div className="stat-value red">{disputed}</div>
                 </div>
               )}
+              {clarificationCount > 0 && (
+                <div className="stat-card" style={{ borderColor: 'var(--amber)' }}>
+                  <div className="stat-label">Needs Clarification</div>
+                  <div className="stat-value amber">{clarificationCount}</div>
+                </div>
+              )}
             </div>
 
-            {/* Prompt banner if there are demands awaiting response */}
+            {/* Awaiting response banner */}
             {awaitingResponse > 0 && (
-              <div style={{
-                background: 'rgba(var(--amber-rgb, 245,158,11), 0.08)',
-                border: '1px solid var(--amber)',
-                borderRadius: 'var(--radius)',
-                padding: '12px 16px',
-                marginBottom: 16,
-                fontSize: 13,
-                color: 'var(--text)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-              }}>
+              <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid var(--amber)', borderRadius: 'var(--radius)', padding: '12px 16px', marginBottom: 12, fontSize: 13, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontSize: 18 }}>⏳</span>
                 <span>
-                  <strong>{awaitingResponse} demand{awaitingResponse > 1 ? 's' : ''}</strong> marked Done by the owner —
-                  please respond whether they were fulfilled to your satisfaction.
+                  <strong>{awaitingResponse} demand{awaitingResponse > 1 ? 's' : ''}</strong> marked Done by the owner — please respond whether they were fulfilled to your satisfaction.
                 </span>
               </div>
             )}
 
+            {/* Clarification banner */}
+            {clarificationCount > 0 && (
+              <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid var(--amber)', borderRadius: 'var(--radius)', padding: '12px 16px', marginBottom: 16, fontSize: 13, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 18 }}>❓</span>
+                <span>
+                  <strong>{clarificationCount} demand{clarificationCount > 1 ? 's' : ''}</strong> need more details from you — please check the clarification notes below and ask your LM/ABO to update the demand.
+                </span>
+              </div>
+            )}
+
+            {/* Date filters */}
             <div className="table-wrap">
+              <div className="table-toolbar" style={{ flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>From</span>
+                  <input
+                    type="date"
+                    value={filterFrom}
+                    onChange={e => setFilterFrom(e.target.value)}
+                    className="filter-select"
+                    style={{ width: 140 }}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>To</span>
+                  <input
+                    type="date"
+                    value={filterTo}
+                    onChange={e => setFilterTo(e.target.value)}
+                    className="filter-select"
+                    style={{ width: 140 }}
+                  />
+                </div>
+                {dateFiltersChanged && (
+                  <button className="btn btn-sm" onClick={() => { setFilterFrom(defaultRange.from); setFilterTo(defaultRange.to) }}>
+                    Reset dates
+                  </button>
+                )}
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text3)' }}>{filtered.length} demands</span>
+              </div>
+
               {loading ? (
                 <div className="loading"><div className="spinner" /> Loading…</div>
-              ) : demands.length === 0 ? (
+              ) : filtered.length === 0 ? (
                 <div className="empty-state">
                   {Icons.inbox}
-                  <div className="empty-state-title">No demands yet</div>
-                  <div className="empty-state-sub">No demands have been submitted for {selectedStore}</div>
+                  <div className="empty-state-title">No demands found</div>
+                  <div className="empty-state-sub">{dateFiltersChanged ? 'Try adjusting the date range' : `No demands have been submitted for ${selectedStore}`}</div>
                 </div>
               ) : (
                 <div style={{ overflowX: 'auto' }}>
@@ -196,18 +248,21 @@ export default function StoreViewPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {demands.map(d => (
+                      {filtered.map(d => (
                         <tr
                           key={d.id}
-                          style={d.status === 'Done' && !d.satisfaction
-                            ? { background: 'rgba(245,158,11,0.05)' }
-                            : d.satisfaction === 'not_satisfied'
-                              ? { background: 'rgba(220,53,69,0.05)' }
-                              : {}
+                          style={
+                            d.clarification_needed
+                              ? { background: 'rgba(245,158,11,0.06)', borderLeft: '3px solid var(--amber)' }
+                              : d.status === 'Done' && !d.satisfaction
+                                ? { background: 'rgba(245,158,11,0.04)' }
+                                : d.satisfaction === 'not_satisfied'
+                                  ? { background: 'rgba(220,53,69,0.05)' }
+                                  : {}
                           }
                         >
-                          {/* Ask — full wrap, no truncation */}
-                          <td style={{ fontSize: 13, maxWidth: 240, whiteSpace: 'normal', lineHeight: 1.5 }}>
+                          {/* Ask — wide, full wrap */}
+                          <td style={{ fontSize: 13, minWidth: 240, maxWidth: 320, whiteSpace: 'normal', lineHeight: 1.6 }}>
                             {d.original_ask}
                           </td>
 
@@ -216,26 +271,36 @@ export default function StoreViewPage() {
                           <td><span className="month-chip">{d.month || '—'}</span></td>
                           <td><Badge type={d.decision || ''} /></td>
 
-                          {/* Rejection reason — tooltip on truncate */}
-                          <td
-                            title={d.decision === 'Reject' ? (d.reject_reason || '') : ''}
-                            style={{ fontSize: 12, color: 'var(--danger)', maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}
-                          >
+                          {/* Rejection reason — wide, wraps */}
+                          <td style={{ fontSize: 12, color: 'var(--danger)', minWidth: 180, maxWidth: 240, whiteSpace: 'normal', lineHeight: 1.5 }}>
                             {d.decision === 'Reject' ? (d.reject_reason || '—') : '—'}
                           </td>
 
-                          <td style={{ fontSize: 12 }}>{d.promise_date || '—'}</td>
-                          <td>{d.status ? <Badge type={d.status} /> : '—'}</td>
+                          <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{d.promise_date || '—'}</td>
 
-                          {/* Remarks — tooltip on truncate */}
-                          <td
-                            title={d.remarks || ''}
-                            style={{ fontSize: 12, color: 'var(--text2)', maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}
-                          >
+                          {/* Status + Clarification note */}
+                          <td style={{ minWidth: 120 }}>
+                            {d.status ? <Badge type={d.status} /> : '—'}
+                            {d.clarification_needed && (
+                              <div style={{ marginTop: 6 }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--amber)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                  ⚠ Needs Clarification
+                                </span>
+                                {d.clarification_note && (
+                                  <div style={{ fontSize: 11, color: 'var(--amber)', marginTop: 3, maxWidth: 200, whiteSpace: 'normal', lineHeight: 1.4 }}>
+                                    {d.clarification_note}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Remarks — wide, wraps */}
+                          <td style={{ fontSize: 12, color: 'var(--text2)', minWidth: 160, maxWidth: 220, whiteSpace: 'normal', lineHeight: 1.5 }}>
                             {d.remarks || '—'}
                           </td>
 
-                          {/* Satisfaction column */}
+                          {/* Satisfaction */}
                           <td style={{ minWidth: 120 }}>
                             {!d.satisfaction && d.status === 'Done' ? (
                               <button
@@ -251,10 +316,7 @@ export default function StoreViewPage() {
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                                 <Badge type="not_satisfied" />
                                 {d.satisfaction_reason && (
-                                  <span
-                                    title={d.satisfaction_reason}
-                                    style={{ fontSize: 10, color: 'var(--danger)', maxWidth: 140, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}
-                                  >
+                                  <span title={d.satisfaction_reason} style={{ fontSize: 10, color: 'var(--danger)', maxWidth: 140, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>
                                     {d.satisfaction_reason}
                                   </span>
                                 )}
