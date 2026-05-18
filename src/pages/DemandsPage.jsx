@@ -160,7 +160,7 @@ export default function DemandsPage() {
       satisfaction, satisfaction_reason,
       satisfaction_by: profile?.full_name || profile?.email,
       satisfaction_at: new Date().toISOString(),
-      ...(satisfaction === 'not_satisfied' && { status: 'In Progress' }),
+      ...(satisfaction === 'not_satisfied' && { status: 'In Progress', completed_at: null }),
     }
     const { error } = await supabase.from('demands').update(updateData).eq('id', satisfactionDemand.id)
     if (error) throw error

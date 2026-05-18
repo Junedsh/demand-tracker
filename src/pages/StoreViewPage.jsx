@@ -51,7 +51,7 @@ export default function StoreViewPage() {
       satisfaction_reason,
       satisfaction_by: selectedStore,
       satisfaction_at: new Date().toISOString(),
-      ...(satisfaction === 'not_satisfied' && { status: 'In Progress' }),
+      ...(satisfaction === 'not_satisfied' && { status: 'In Progress', completed_at: null }),
     }
     const { error } = await supabase.from('demands').update(updateData).eq('id', satisfactionDemand.id)
     if (error) { toast(error.message, 'error'); return }
