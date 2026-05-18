@@ -14,8 +14,17 @@ function formatDate(iso) {
 
 function calcTAT(created, completed) {
   if (!created || !completed) return null
-  const days = Math.round((new Date(completed) - new Date(created)) / (1000 * 60 * 60 * 24))
-  return days
+  return Math.round((new Date(completed) - new Date(created)) / (1000 * 60 * 60 * 24))
+}
+
+function getMonthRange() {
+  const now = new Date()
+  const first = new Date(now.getFullYear(), now.getMonth(), 1)
+  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  return {
+    from: first.toISOString().slice(0, 10),
+    to: last.toISOString().slice(0, 10),
+  }
 }
 
 function downloadCSV(data) {
@@ -23,20 +32,10 @@ function downloadCSV(data) {
   const rows = data.map(d => {
     const tat = calcTAT(d.created_at, d.completed_at)
     return [
-      d.store_name || '',
-      d.abo || '',
-      d.lm_name || '',
-      d.original_ask || '',
-      d.action_owner || '',
-      d.department || '',
-      d.decision || '',
-      d.reject_reason || '',
-      d.status || '',
-      d.promise_date || '',
-      d.remarks || '',
-      d.satisfaction || '',
-      d.satisfaction_reason || '',
-      d.satisfaction_by || '',
+      d.store_name || '', d.abo || '', d.lm_name || '', d.original_ask || '',
+      d.action_owner || '', d.department || '', d.decision || '', d.reject_reason || '',
+      d.status || '', d.promise_date || '', d.remarks || '', d.satisfaction || '',
+      d.satisfaction_reason || '', d.satisfaction_by || '',
       d.created_at ? formatDate(d.created_at) : '',
       d.completed_at ? formatDate(d.completed_at) : '',
       tat !== null ? tat : '',
@@ -77,6 +76,10 @@ export default function DashboardPage() {
   const [filterOwner, setFilterOwner] = useState('')
   const [filterDept, setFilterDept] = useState('')
 
+  const defaultRange = getMonthRange()
+  const [filterFrom, setFilterFrom] = useState(defaultRange.from)
+  const [filterTo, setFilterTo] = useState(defaultRange.to)
+
   const role = profile?.role
   const canRespondSatisfaction = ['store', 'abo', 'lm'].includes(role)
 
@@ -91,8 +94,7 @@ export default function DashboardPage() {
 
   async function fetchMyStores() {
     if (role === 'admin' || role === 'owner' || role === 'manager' || role === 'director') {
-      setMyStores([])
-      return
+      setMyStores([]); return
     }
     const col = role === 'lm' ? 'lm_name' : 'abo'
     const { data } = await supabase.from('store_master').select('store_name').eq(col, profile.full_name)
@@ -105,23 +107,18 @@ export default function DashboardPage() {
 
     if (role === 'owner') {
       query = query.ilike('action_owner', `%${profile.full_name}%`)
-
     } else if (role === 'manager') {
-      const { data: reportees } = await supabase
-        .from('profiles').select('full_name')
+      const { data: reportees } = await supabase.from('profiles').select('full_name')
         .eq('manager', profile.full_name).eq('role', 'owner')
       const names = (reportees ?? []).map(r => r.full_name).filter(Boolean)
       if (names.length === 0) { setDemands([]); setLoading(false); return }
       query = query.in('action_owner', names)
-
     } else if (role === 'director') {
-      const { data: reportees } = await supabase
-        .from('profiles').select('full_name')
+      const { data: reportees } = await supabase.from('profiles').select('full_name')
         .eq('director', profile.full_name).eq('role', 'owner')
       const names = (reportees ?? []).map(r => r.full_name).filter(Boolean)
       if (names.length === 0) { setDemands([]); setLoading(false); return }
       query = query.in('action_owner', names)
-
     } else if (storeNames.length > 0) {
       query = query.in('store_name', storeNames)
     }
@@ -147,8 +144,7 @@ export default function DashboardPage() {
 
   async function handleSatisfaction({ satisfaction, satisfaction_reason }) {
     const updateData = {
-      satisfaction,
-      satisfaction_reason,
+      satisfaction, satisfaction_reason,
       satisfaction_by: profile?.full_name || profile?.email,
       satisfaction_at: new Date().toISOString(),
       ...(satisfaction === 'not_satisfied' && { status: 'In Progress' }),
@@ -175,10 +171,11 @@ export default function DashboardPage() {
     if (filterStore && d.store_name !== filterStore) return false
     if (filterOwner && d.action_owner !== filterOwner) return false
     if (filterDept && d.department !== filterDept) return false
+    if (filterFrom && d.created_at && d.created_at.slice(0, 10) < filterFrom) return false
+    if (filterTo && d.created_at && d.created_at.slice(0, 10) > filterTo) return false
     return true
   })
 
-  // KPI calculations
   const completedDemands = displayed.filter(d => d.completed_at && d.created_at)
   const tatValues = completedDemands.map(d => calcTAT(d.created_at, d.completed_at)).filter(v => v !== null)
   const avgTAT = tatValues.length > 0 ? Math.round(tatValues.reduce((a, b) => a + b, 0) / tatValues.length) : null
@@ -195,19 +192,14 @@ export default function DashboardPage() {
   }
 
   const hasFilters = filterLM || filterABO || filterStore || filterOwner || filterDept
+    || filterFrom !== defaultRange.from || filterTo !== defaultRange.to
 
-  const patchLabel = role === 'admin'
-    ? 'All stores'
-    : role === 'lm'
-      ? `${profile?.full_name}'s stores · ${myStores?.length ?? '…'} stores`
-      : role === 'abo'
-        ? `${profile?.full_name}'s patch · ${myStores?.length ?? '…'} stores`
-        : role === 'owner'
-          ? `Demands assigned to ${profile?.full_name}`
-          : role === 'manager'
-            ? `Team demands — ${profile?.full_name}`
-            : role === 'director'
-              ? `All team demands — ${profile?.full_name}`
+  const patchLabel = role === 'admin' ? 'All stores'
+    : role === 'lm' ? `${profile?.full_name}'s stores · ${myStores?.length ?? '…'} stores`
+      : role === 'abo' ? `${profile?.full_name}'s patch · ${myStores?.length ?? '…'} stores`
+        : role === 'owner' ? `Demands assigned to ${profile?.full_name}`
+          : role === 'manager' ? `Team demands — ${profile?.full_name}`
+            : role === 'director' ? `All team demands — ${profile?.full_name}`
               : ''
 
   return (
@@ -230,8 +222,6 @@ export default function DashboardPage() {
       </div>
 
       <div className="page-body">
-
-        {/* KPI Cards */}
         <div className="stats-grid">
           <div className="stat-card">
             <div className="stat-label">Total Demands</div>
@@ -300,10 +290,33 @@ export default function DashboardPage() {
               {deptOptions.map(d => <option key={d}>{d}</option>)}
             </select>
 
+            {/* Date range filters */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>From</span>
+              <input
+                type="date"
+                value={filterFrom}
+                onChange={e => setFilterFrom(e.target.value)}
+                className="filter-select"
+                style={{ width: 140 }}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>To</span>
+              <input
+                type="date"
+                value={filterTo}
+                onChange={e => setFilterTo(e.target.value)}
+                className="filter-select"
+                style={{ width: 140 }}
+              />
+            </div>
+
             {hasFilters && (
               <button className="btn btn-sm" onClick={() => {
                 setFilterLM(''); setFilterABO(''); setFilterStore('')
                 setFilterOwner(''); setFilterDept('')
+                setFilterFrom(defaultRange.from); setFilterTo(defaultRange.to)
               }}>
                 Clear filters
               </button>
@@ -318,8 +331,7 @@ export default function DashboardPage() {
               {Icons.inbox}
               <div className="empty-state-title">{hasFilters ? 'No demands match filters' : 'No demands yet'}</div>
               <div className="empty-state-sub">
-                {hasFilters
-                  ? 'Try clearing the filters'
+                {hasFilters ? 'Try clearing the filters'
                   : role === 'owner' || role === 'manager' || role === 'director'
                     ? 'No demands found for your team yet.'
                     : myStores?.length === 0
@@ -357,91 +369,47 @@ export default function DashboardPage() {
                         <td><strong style={{ fontSize: 13 }}>{d.store_name}</strong></td>
                         <td style={{ fontSize: 12, color: 'var(--text2)' }}>{d.abo || '—'}</td>
                         <td style={{ fontSize: 12, color: 'var(--text2)' }}>{d.lm_name}</td>
-
-                        {/* Ask — full wrap */}
                         <td style={{ fontSize: 13, minWidth: 280, whiteSpace: 'normal', lineHeight: 1.5 }}>
                           {d.original_ask}
                         </td>
-
                         <td style={{ fontSize: 12 }}>{d.action_owner || '—'}</td>
                         <td style={{ color: 'var(--text2)', fontSize: 12 }}>{d.department || '—'}</td>
                         <td><Badge type={d.decision || ''} /></td>
-
-                        {/* Rejection reason — tooltip */}
-                        <td
-                          title={d.decision === 'Reject' ? (d.reject_reason || '') : ''}
-                          style={{ fontSize: 12, color: 'var(--danger)', maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}
-                        >
+                        <td title={d.decision === 'Reject' ? (d.reject_reason || '') : ''}
+                          style={{ fontSize: 12, color: 'var(--danger)', maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>
                           {d.decision === 'Reject' ? (d.reject_reason || '—') : '—'}
                         </td>
-
-                        {/* Status + Clarification */}
                         <td>
                           {d.status ? <Badge type={d.status} /> : '—'}
                           {d.clarification_needed && (
                             <div style={{ marginTop: 4 }}>
-                              <span style={{
-                                fontSize: 10, fontWeight: 700, color: 'var(--amber)',
-                                textTransform: 'uppercase', letterSpacing: '0.04em'
-                              }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--amber)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                                 ⚠ Needs Clarification
                               </span>
                               {d.clarification_note && (
-                                <div
-                                  title={d.clarification_note}
-                                  style={{
-                                    fontSize: 11, color: 'var(--amber)', marginTop: 2,
-                                    maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden',
-                                    textOverflow: 'ellipsis', cursor: 'default', lineHeight: 1.4,
-                                  }}
-                                >
+                                <div title={d.clarification_note} style={{ fontSize: 11, color: 'var(--amber)', marginTop: 2, maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default', lineHeight: 1.4 }}>
                                   {d.clarification_note}
                                 </div>
                               )}
                             </div>
                           )}
                         </td>
-
                         <td style={{ fontSize: 12 }}>{d.promise_date || '—'}</td>
-
-                        {/* Remarks — tooltip */}
-                        <td
-                          title={d.remarks || ''}
-                          style={{ fontSize: 12, color: 'var(--text2)', maxWidth: 140, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}
-                        >
+                        <td title={d.remarks || ''} style={{ fontSize: 12, color: 'var(--text2)', maxWidth: 140, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>
                           {d.remarks || '—'}
                         </td>
-
-                        {/* Created date */}
-                        <td style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
-                          {formatDate(d.created_at)}
-                        </td>
-
-                        {/* Completed date */}
-                        <td style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
-                          {formatDate(d.completed_at)}
-                        </td>
-
-                        {/* TAT */}
+                        <td style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{formatDate(d.created_at)}</td>
+                        <td style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{formatDate(d.completed_at)}</td>
                         <td style={{ fontSize: 12, whiteSpace: 'nowrap', textAlign: 'center' }}>
                           {tat !== null ? (
-                            <span style={{
-                              fontWeight: 600,
-                              color: tat <= 7 ? 'var(--success, #16a34a)' : tat <= 14 ? 'var(--amber)' : 'var(--danger)',
-                            }}>
+                            <span style={{ fontWeight: 600, color: tat <= 7 ? 'var(--success, #16a34a)' : tat <= 14 ? 'var(--amber)' : 'var(--danger)' }}>
                               {tat}d
                             </span>
                           ) : '—'}
                         </td>
-
-                        {/* Satisfaction */}
                         <td style={{ minWidth: 110 }}>
                           {!d.satisfaction && d.status === 'Done' && canRespondSatisfaction ? (
-                            <button
-                              className="btn btn-sm"
-                              style={{ fontSize: 11, background: 'var(--amber)', color: '#fff', border: 'none' }}
-                              onClick={() => setSatisfactionDemand(d)}
-                            >
+                            <button className="btn btn-sm" style={{ fontSize: 11, background: 'var(--amber)', color: '#fff', border: 'none' }} onClick={() => setSatisfactionDemand(d)}>
                               Respond
                             </button>
                           ) : !d.satisfaction && d.status === 'Done' ? (
@@ -452,10 +420,7 @@ export default function DashboardPage() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                               <Badge type="not_satisfied" />
                               {d.satisfaction_reason && (
-                                <span
-                                  title={d.satisfaction_reason}
-                                  style={{ fontSize: 10, color: 'var(--danger)', maxWidth: 140, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}
-                                >
+                                <span title={d.satisfaction_reason} style={{ fontSize: 10, color: 'var(--danger)', maxWidth: 140, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>
                                   {d.satisfaction_reason}
                                 </span>
                               )}
@@ -474,12 +439,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {showAdd && (
-        <DemandModal userProfile={profile} onClose={() => setShowAdd(false)} onSave={handleSave} />
-      )}
-      {satisfactionDemand && (
-        <SatisfactionModal demand={satisfactionDemand} onClose={() => setSatisfactionDemand(null)} onSave={handleSatisfaction} />
-      )}
+      {showAdd && <DemandModal userProfile={profile} onClose={() => setShowAdd(false)} onSave={handleSave} />}
+      {satisfactionDemand && <SatisfactionModal demand={satisfactionDemand} onClose={() => setSatisfactionDemand(null)} onSave={handleSatisfaction} />}
     </>
   )
 }

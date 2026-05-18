@@ -9,6 +9,16 @@ import SatisfactionModal from '../components/SatisfactionModal'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
+function getMonthRange() {
+  const now = new Date()
+  const first = new Date(now.getFullYear(), now.getMonth(), 1)
+  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  return {
+    from: first.toISOString().slice(0, 10),
+    to: last.toISOString().slice(0, 10),
+  }
+}
+
 export default function DemandsPage() {
   const { toast } = useOutletContext()
   const { profile } = useAuth()
@@ -25,6 +35,10 @@ export default function DemandsPage() {
   const [filterMonth, setFilterMonth] = useState('')
   const [filterOwner, setFilterOwner] = useState('')
   const [filterSatisfaction, setFilterSatisfaction] = useState('')
+
+  const defaultRange = getMonthRange()
+  const [filterFrom, setFilterFrom] = useState(defaultRange.from)
+  const [filterTo, setFilterTo] = useState(defaultRange.to)
 
   const [editDemand, setEditDemand] = useState(null)
   const [reviewDemand, setReviewDemand] = useState(null)
@@ -84,6 +98,8 @@ export default function DemandsPage() {
     if (filterSatisfaction === 'satisfied' && d.satisfaction !== 'satisfied') return false
     if (filterSatisfaction === 'not_satisfied' && d.satisfaction !== 'not_satisfied') return false
     if (filterSatisfaction === 'awaiting' && !(d.status === 'Done' && !d.satisfaction)) return false
+    if (filterFrom && d.created_at && d.created_at.slice(0, 10) < filterFrom) return false
+    if (filterTo && d.created_at && d.created_at.slice(0, 10) > filterTo) return false
     return true
   })
 
@@ -91,9 +107,12 @@ export default function DemandsPage() {
     setSearch(''); setFilterLM(''); setFilterABO(''); setFilterStore('')
     setFilterDept(''); setFilterDecision(''); setFilterMonth(''); setFilterOwner('')
     setFilterSatisfaction('')
+    setFilterFrom(defaultRange.from); setFilterTo(defaultRange.to)
   }
 
-  const hasFilters = search || filterLM || filterABO || filterStore || filterDept || filterDecision || filterMonth || filterOwner || filterSatisfaction
+  const hasFilters = search || filterLM || filterABO || filterStore || filterDept
+    || filterDecision || filterMonth || filterOwner || filterSatisfaction
+    || filterFrom !== defaultRange.from || filterTo !== defaultRange.to
 
   async function handleAdd(form) {
     const { error } = await supabase.from('demands').insert([form])
@@ -108,13 +127,7 @@ export default function DemandsPage() {
     const ownerChanged = form.action_owner !== original.action_owner
     const updateData = {
       ...form,
-      ...(ownerChanged && {
-        decision: null,
-        reject_reason: null,
-        promise_date: null,
-        status: 'Pending',
-        remarks: null,
-      })
+      ...(ownerChanged && { decision: null, reject_reason: null, promise_date: null, status: 'Pending', remarks: null })
     }
     const { error } = await supabase.from('demands').update(updateData).eq('id', original.id)
     if (error) throw error
@@ -125,86 +138,58 @@ export default function DemandsPage() {
 
   async function handleReview(reviewData) {
     const updateData = { ...reviewData }
-
     if (reviewData.status === 'Done') {
-      // Set completion timestamp + reset satisfaction for fresh re-evaluation
       updateData.completed_at = new Date().toISOString()
       updateData.satisfaction = null
       updateData.satisfaction_reason = null
       updateData.satisfaction_by = null
       updateData.satisfaction_at = null
     }
-
     if (reviewData.status === 'In Progress' || reviewData.status === 'Pending') {
-      // If owner rolls back status, clear completion date too
       updateData.completed_at = null
     }
-
     const { error } = await supabase.from('demands').update(updateData).eq('id', reviewDemand.id)
     if (error) throw error
     toast('Review saved', 'success')
     setReviewDemand(null)
-    refetch() // or fetchMyDemands() in MyActionsPage
+    refetch()
   }
 
   async function handleSatisfaction({ satisfaction, satisfaction_reason }) {
     const updateData = {
-      satisfaction,
-      satisfaction_reason,
+      satisfaction, satisfaction_reason,
       satisfaction_by: profile?.full_name || profile?.email,
       satisfaction_at: new Date().toISOString(),
-      // flip back to In Progress if not satisfied
       ...(satisfaction === 'not_satisfied' && { status: 'In Progress' }),
     }
     const { error } = await supabase.from('demands').update(updateData).eq('id', satisfactionDemand.id)
     if (error) throw error
-    toast(
-      satisfaction === 'satisfied' ? 'Marked as satisfied ✓' : 'Dispute raised — status reset to In Progress',
-      satisfaction === 'satisfied' ? 'success' : 'error'
-    )
+    toast(satisfaction === 'satisfied' ? 'Marked as satisfied ✓' : 'Dispute raised — status reset to In Progress', satisfaction === 'satisfied' ? 'success' : 'error')
     setSatisfactionDemand(null)
     refetch()
   }
 
-  // Satisfaction badge helper
   function SatisfactionBadge({ demand }) {
-    if (demand.status !== 'Done' && demand.satisfaction !== 'satisfied') {
-      if (demand.satisfaction === 'not_satisfied') {
-        // show even if status flipped back
-      } else {
-        return <span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>
-      }
+    if (!demand.satisfaction && demand.status === 'Done' && canRespondSatisfaction) {
+      return (
+        <button className="btn btn-sm" style={{ fontSize: 11, background: 'var(--amber)', color: '#fff', border: 'none' }} onClick={() => setSatisfactionDemand(demand)}>
+          Respond
+        </button>
+      )
     }
-    if (!demand.satisfaction) {
-      if (demand.status === 'Done' && canRespondSatisfaction) {
-        return (
-          <button
-            className="btn btn-sm"
-            style={{ fontSize: 11, background: 'var(--amber)', color: '#fff', border: 'none' }}
-            onClick={() => setSatisfactionDemand(demand)}
-          >
-            Respond
-          </button>
-        )
-      }
-      if (demand.status === 'Done') {
-        return <span style={{ fontSize: 11, color: 'var(--text3)' }}>Awaiting</span>
-      }
-      return <span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>
-    }
-    if (demand.satisfaction === 'satisfied') {
-      return <Badge type="satisfied" />
-    }
-    return (
+    if (!demand.satisfaction && demand.status === 'Done') return <span style={{ fontSize: 11, color: 'var(--text3)' }}>Awaiting</span>
+    if (demand.satisfaction === 'satisfied') return <Badge type="satisfied" />
+    if (demand.satisfaction === 'not_satisfied') return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <Badge type="not_satisfied" />
         {demand.satisfaction_reason && (
-          <span style={{ fontSize: 10, color: 'var(--danger)', maxWidth: 140, whiteSpace: 'normal', lineHeight: 1.3 }}>
+          <span title={demand.satisfaction_reason} style={{ fontSize: 10, color: 'var(--danger)', maxWidth: 140, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>
             {demand.satisfaction_reason}
           </span>
         )}
       </div>
     )
+    return <span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>
   }
 
   return (
@@ -275,9 +260,17 @@ export default function DemandsPage() {
               <option value="awaiting">Awaiting response</option>
             </select>
 
-            {hasFilters && (
-              <button className="btn btn-sm" onClick={clearAll}>Clear all</button>
-            )}
+            {/* Date range */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>From</span>
+              <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} className="filter-select" style={{ width: 140 }} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>To</span>
+              <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} className="filter-select" style={{ width: 140 }} />
+            </div>
+
+            {hasFilters && <button className="btn btn-sm" onClick={clearAll}>Clear all</button>}
           </div>
 
           {loading ? (
@@ -317,35 +310,23 @@ export default function DemandsPage() {
                       <td style={{ fontSize: 12, color: 'var(--text2)' }}>{d.abo || '—'}</td>
                       <td style={{ fontSize: 12, color: 'var(--text2)' }}>{d.lm_name}</td>
                       <td><strong style={{ fontSize: 13 }}>{d.store_name}</strong></td>
-                      <td className="td-truncate">{d.original_ask}</td>
+                      <td style={{ fontSize: 13, minWidth: 220, whiteSpace: 'normal', lineHeight: 1.5 }}>{d.original_ask}</td>
                       <td style={{ fontSize: 12 }}>{d.action_owner || '—'}</td>
                       <td style={{ fontSize: 11, color: 'var(--text3)' }}>{d.department || '—'}</td>
                       <td><span className="month-chip">{d.month || '—'}</span></td>
                       <td><Badge type={d.decision || ''} /></td>
                       <td style={{ fontSize: 12, maxWidth: 160 }}>
-                        {d.decision === 'Reject'
-                          ? <span style={{ color: 'var(--danger)' }}>{d.reject_reason || '—'}</span>
-                          : '—'}
+                        {d.decision === 'Reject' ? <span style={{ color: 'var(--danger)' }}>{d.reject_reason || '—'}</span> : '—'}
                       </td>
                       <td>
                         {d.status ? <Badge type={d.status} /> : '—'}
                         {d.clarification_needed && (
                           <div style={{ marginTop: 4 }}>
-                            <span style={{
-                              fontSize: 10, fontWeight: 700, color: 'var(--amber)',
-                              textTransform: 'uppercase', letterSpacing: '0.04em'
-                            }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--amber)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                               ⚠ Needs Clarification
                             </span>
                             {d.clarification_note && (
-                              <div
-                                title={d.clarification_note}
-                                style={{
-                                  fontSize: 11, color: 'var(--amber)', marginTop: 2,
-                                  maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden',
-                                  textOverflow: 'ellipsis', cursor: 'default', lineHeight: 1.4,
-                                }}
-                              >
+                              <div title={d.clarification_note} style={{ fontSize: 11, color: 'var(--amber)', marginTop: 2, maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default', lineHeight: 1.4 }}>
                                 {d.clarification_note}
                               </div>
                             )}
@@ -353,7 +334,7 @@ export default function DemandsPage() {
                         )}
                       </td>
                       <td style={{ fontSize: 12 }}>{d.promise_date || '—'}</td>
-                      <td className="td-truncate" style={{ fontSize: 12, color: 'var(--text2)', maxWidth: 140 }}>
+                      <td title={d.remarks || ''} className="td-truncate" style={{ fontSize: 12, color: 'var(--text2)', maxWidth: 140 }}>
                         {d.remarks || '—'}
                       </td>
                       <td style={{ minWidth: 100 }}>
@@ -361,7 +342,7 @@ export default function DemandsPage() {
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: 4 }}>
-                          <button className="btn btn-sm btn-icon" onClick={() => setEditDemand(d)} title="Edit" aria-label="Edit demand">
+                          <button className="btn btn-sm btn-icon" onClick={() => setEditDemand(d)} title="Edit">
                             {Icons.edit}
                           </button>
                           {(role === 'owner' || role === 'admin') && (
