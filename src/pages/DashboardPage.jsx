@@ -101,7 +101,7 @@ export default function DashboardPage() {
 
   async function fetchDemands(storeNames) {
     setLoading(true)
-    let query = supabase.from('demands').select('*').order('created_at', { ascending: false }).limit(50)
+    let query = supabase.from('demands').select('*').order('created_at', { ascending: false })
 
     if (role === 'owner') {
       query = query.ilike('action_owner', `%${profile.full_name}%`)

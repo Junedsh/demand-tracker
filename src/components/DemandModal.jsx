@@ -180,10 +180,9 @@ export default function DemandModal({ demand, onClose, onSave, userProfile }) {
               <input
                 type="text"
                 value={form.lm_name}
-                onChange={e => set('lm_name', e.target.value)}
+                disabled
                 placeholder="Auto-filled from store"
-                disabled={role === 'lm'}
-                style={{ opacity: role === 'lm' ? 0.7 : 1 }}
+                style={{ opacity: 0.7 }}
               />
             </div>
             <div className="field">
