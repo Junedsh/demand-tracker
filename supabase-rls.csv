@@ -1,0 +1,37 @@
+policy_name,operation,using_expression,with_check_expression
+ABOs can insert demands,INSERT,null,"(EXISTS ( SELECT 1
+   FROM profiles
+  WHERE ((profiles.id = auth.uid()) AND (profiles.role = 'abo'::text))))"
+ABOs can read patch demands,SELECT,"(EXISTS ( SELECT 1
+   FROM (profiles p
+     JOIN store_master sm ON ((sm.abo = p.full_name)))
+  WHERE ((p.id = auth.uid()) AND (p.role = 'abo'::text) AND (demands.store_name = sm.store_name))))",null
+Admins and LMs can insert demands,INSERT,null,"(EXISTS ( SELECT 1
+   FROM profiles
+  WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['admin'::text, 'lm'::text])))))"
+Admins and LMs can read all demands,SELECT,"(EXISTS ( SELECT 1
+   FROM profiles
+  WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['admin'::text, 'lm'::text])))))",null
+LMs can insert demands,INSERT,null,"(EXISTS ( SELECT 1
+   FROM profiles
+  WHERE ((profiles.id = auth.uid()) AND (profiles.role = 'lm'::text))))"
+LMs can read their store demands,SELECT,"(EXISTS ( SELECT 1
+   FROM (profiles p
+     JOIN store_master sm ON ((sm.lm_name = p.full_name)))
+  WHERE ((p.id = auth.uid()) AND (p.role = 'lm'::text) AND (demands.store_name = sm.store_name))))",null
+Owners can read assigned demands,SELECT,"(EXISTS ( SELECT 1
+   FROM profiles p
+  WHERE ((p.id = auth.uid()) AND (p.role = 'owner'::text) AND (demands.action_owner ~~* (('%'::text || p.full_name) || '%'::text)))))",null
+Store staff can insert demands,INSERT,null,"(EXISTS ( SELECT 1
+   FROM profiles
+  WHERE ((profiles.id = auth.uid()) AND (profiles.role = 'store'::text))))"
+Store staff can read own store demands,SELECT,"(EXISTS ( SELECT 1
+   FROM profiles p
+  WHERE ((p.id = auth.uid()) AND (p.role = 'store'::text) AND (demands.store_name = p.store_name))))",null
+Store users can read demands,SELECT,"(EXISTS ( SELECT 1
+   FROM profiles
+  WHERE ((profiles.id = auth.uid()) AND (profiles.role = 'store'::text))))",null
+authenticated users can update demands,UPDATE,true,true
+managers and directors can read demands,SELECT,"(EXISTS ( SELECT 1
+   FROM profiles
+  WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['manager'::text, 'director'::text])))))",null

@@ -77,7 +77,20 @@ export default function MyActionsPage() {
   }[profile?.role] ?? 'All demands'
 
   async function handleReview(reviewData) {
+    console.log('reviewDemand.id:', reviewDemand?.id)
+    console.log('reviewData:', reviewData)
     const updateData = { ...reviewData }
+
+    // If reassigning — skip all the status logic, just update directly
+    if (reviewData.action_owner && reviewData.action_owner !== reviewDemand.action_owner) {
+      const { error } = await supabase.from('demands').update(updateData).eq('id', reviewDemand.id)
+      if (error) throw error
+      toast('Demand reassigned', 'success')
+      setReviewDemand(null)
+      fetchMyDemands()
+      return
+    }
+
     if (reviewData.status === 'Done') {
       updateData.completed_at = new Date().toISOString()
       updateData.satisfaction = null

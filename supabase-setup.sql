@@ -178,6 +178,14 @@ create policy "Owners can update review fields"
         and p.role = 'owner'
         and demands.action_owner ilike '%' || p.full_name || '%'
     )
+  )
+  with check (
+    -- Allow saving the updated row even if the action_owner has changed (reassignment)
+    exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid()
+        and p.role = 'owner'
+    )
   );
 
 
