@@ -236,6 +236,7 @@ export default function StoreViewPage() {
                     <thead>
                       <tr>
                         <th>Ask</th>
+                        <th>Reference</th>
                         <th>Owner</th>
                         <th>Dept</th>
                         <th>Month</th>
@@ -265,7 +266,14 @@ export default function StoreViewPage() {
                           <td style={{ fontSize: 13, minWidth: 240, maxWidth: 320, whiteSpace: 'normal', lineHeight: 1.6 }}>
                             {d.original_ask}
                           </td>
-
+                          <td style={{ fontSize: 12 }}>
+                            {d.reference_link ? (
+                              <a href={d.reference_link} target="_blank" rel="noopener noreferrer"
+                                style={{ color: 'var(--primary)', textDecoration: 'underline' }}>
+                                View ↗
+                              </a>
+                            ) : '—'}
+                          </td>
                           <td style={{ fontSize: 12 }}>{d.action_owner || '—'}</td>
                           <td style={{ fontSize: 11, color: 'var(--text3)' }}>{d.department || '—'}</td>
                           <td><span className="month-chip">{d.month || '—'}</span></td>

@@ -169,6 +169,7 @@ export default function MyActionsPage() {
                     <th>Store</th>
                     {(profile?.role === 'manager' || profile?.role === 'director') && <th>Owner</th>}
                     <th>Ask</th>
+                    <th>Reference</th>
                     <th>Dept</th>
                     <th>Month</th>
                     <th>Decision</th>
@@ -200,6 +201,14 @@ export default function MyActionsPage() {
                       )}
                       <td style={{ fontSize: 13, maxWidth: 220, whiteSpace: 'normal', lineHeight: 1.5 }}>
                         {d.original_ask}
+                      </td>
+                      <td style={{ fontSize: 12 }}>
+                        {d.reference_link ? (
+                          <a href={d.reference_link} target="_blank" rel="noopener noreferrer"
+                            style={{ color: 'var(--primary)', textDecoration: 'underline' }}>
+                            View ↗
+                          </a>
+                        ) : '—'}
                       </td>
                       <td style={{ fontSize: 11, color: 'var(--text3)' }}>{d.department || '—'}</td>
                       <td><span className="month-chip">{d.month || '—'}</span></td>

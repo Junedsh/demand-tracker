@@ -34,6 +34,7 @@ export default function DemandModal({ demand, onClose, onSave, userProfile }) {
     department: '',
     month: currentMonth,
     year: new Date().getFullYear(),
+    reference_link: '',
   })
   const [stores, setStores] = useState([])
   const [owners, setOwners] = useState([])
@@ -68,6 +69,7 @@ export default function DemandModal({ demand, onClose, onSave, userProfile }) {
         department: demand.department ?? '',
         month: demand.month ?? currentMonth,
         year: demand.year ?? new Date().getFullYear(),
+        reference_link: demand.reference_link ?? '',
       })
     } else if (userProfile) {
       setForm(prev => ({
@@ -208,6 +210,20 @@ export default function DemandModal({ demand, onClose, onSave, userProfile }) {
               style={hasClarification ? { borderColor: 'var(--amber)', minHeight: 100 } : {}}
               autoFocus={hasClarification}
             />
+          </div>
+
+          <div className="field">
+            <label>
+              Reference Link
+              <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>(optional)</span>
+            </label>
+            <input
+              type="url"
+              value={form.reference_link}
+              onChange={e => set('reference_link', e.target.value)}
+              placeholder="Google Sheet, Doc, Drive link, image URL…"
+            />
+            <div className="field-hint">Paste any link that helps explain the demand — SKU list, design reference, photo, etc.</div>
           </div>
 
           {/* Owner + Department */}

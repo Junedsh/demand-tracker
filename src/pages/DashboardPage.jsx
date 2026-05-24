@@ -378,6 +378,7 @@ export default function DashboardPage() {
                     <th>ABO</th>
                     <th>LM</th>
                     <th>Ask</th>
+                    <th>Reference</th>
                     <th>Owner</th>
                     <th>Department</th>
                     <th>Decision</th>
@@ -401,6 +402,14 @@ export default function DashboardPage() {
                         <td style={{ fontSize: 12, color: 'var(--text2)' }}>{d.lm_name}</td>
                         <td style={{ fontSize: 13, minWidth: 280, whiteSpace: 'normal', lineHeight: 1.5 }}>
                           {d.original_ask}
+                        </td>
+                        <td style={{ fontSize: 12 }}>
+                          {d.reference_link ? (
+                            <a href={d.reference_link} target="_blank" rel="noopener noreferrer"
+                              style={{ color: 'var(--primary)', textDecoration: 'underline' }}>
+                              View ↗
+                            </a>
+                          ) : '—'}
                         </td>
                         <td style={{ fontSize: 12 }}>{d.action_owner || '—'}</td>
                         <td style={{ color: 'var(--text2)', fontSize: 12 }}>{d.department || '—'}</td>
