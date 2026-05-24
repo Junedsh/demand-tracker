@@ -21,6 +21,14 @@ const CollapseIcon = ({ collapsed }) => (
   </svg>
 )
 
+const ReportsIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 16, height: 16 }}>
+    <line x1="18" y1="20" x2="18" y2="10" />
+    <line x1="12" y1="20" x2="12" y2="4" />
+    <line x1="6" y1="20" x2="6" y2="14" />
+  </svg>
+)
+
 export default function AppShell() {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
@@ -38,6 +46,7 @@ export default function AppShell() {
   const canSeeDashboard = ['admin', 'lm', 'abo', 'owner', 'manager', 'director'].includes(role)
   const canSeeDemands = ['admin', 'lm', 'abo'].includes(role)
   const canSeeActions = ['admin', 'owner', 'manager', 'director'].includes(role)
+  const canSeeReports = ['admin', 'director', 'manager'].includes(role)
   const canSeeStore = role === 'store'
 
   return (
@@ -97,6 +106,15 @@ export default function AppShell() {
               style={{ justifyContent: collapsed ? 'center' : undefined, padding: collapsed ? '10px 0' : undefined }}
             >
               {Icons.check}{!collapsed && 'My Actions'}
+            </NavLink>
+          )}
+
+          {canSeeReports && (
+            <NavLink to="/reports" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+              title={collapsed ? 'Reports' : undefined}
+              style={{ justifyContent: collapsed ? 'center' : undefined, padding: collapsed ? '10px 0' : undefined }}
+            >
+              {ReportsIcon}{!collapsed && 'Reports'}
             </NavLink>
           )}
 

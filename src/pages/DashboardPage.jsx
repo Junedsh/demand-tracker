@@ -75,6 +75,9 @@ export default function DashboardPage() {
   const [filterStore, setFilterStore] = useState('')
   const [filterOwner, setFilterOwner] = useState('')
   const [filterDept, setFilterDept] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+  const [filterDecision, setFilterDecision] = useState('')
+  const [filterSatisfaction, setFilterSatisfaction] = useState('')
 
   const defaultRange = getMonthRange()
   const [filterFrom, setFilterFrom] = useState(defaultRange.from)
@@ -171,6 +174,11 @@ export default function DashboardPage() {
     if (filterStore && d.store_name !== filterStore) return false
     if (filterOwner && d.action_owner !== filterOwner) return false
     if (filterDept && d.department !== filterDept) return false
+    if (filterStatus && d.status !== filterStatus) return false
+    if (filterDecision && d.decision !== filterDecision) return false
+    if (filterSatisfaction === 'satisfied' && d.satisfaction !== 'satisfied') return false
+    if (filterSatisfaction === 'not_satisfied' && d.satisfaction !== 'not_satisfied') return false
+    if (filterSatisfaction === 'awaiting' && !(d.status === 'Done' && !d.satisfaction)) return false
     if (filterFrom && d.created_at && d.created_at.slice(0, 10) < filterFrom) return false
     if (filterTo && d.created_at && d.created_at.slice(0, 10) > filterTo) return false
     return true
@@ -192,6 +200,7 @@ export default function DashboardPage() {
   }
 
   const hasFilters = filterLM || filterABO || filterStore || filterOwner || filterDept
+    || filterStatus || filterDecision || filterSatisfaction
     || filterFrom !== defaultRange.from || filterTo !== defaultRange.to
 
   const patchLabel = role === 'admin' ? 'All stores'
@@ -290,6 +299,26 @@ export default function DashboardPage() {
               {deptOptions.map(d => <option key={d}>{d}</option>)}
             </select>
 
+            <select className="filter-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+              <option value="">All Statuses</option>
+              <option value="Pending">Pending</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Done">Done</option>
+            </select>
+
+            <select className="filter-select" value={filterDecision} onChange={e => setFilterDecision(e.target.value)}>
+              <option value="">All Decisions</option>
+              <option value="Accept">Accepted</option>
+              <option value="Reject">Rejected</option>
+            </select>
+
+            <select className="filter-select" value={filterSatisfaction} onChange={e => setFilterSatisfaction(e.target.value)}>
+              <option value="">All Satisfaction</option>
+              <option value="satisfied">Satisfied</option>
+              <option value="not_satisfied">Disputed</option>
+              <option value="awaiting">Awaiting Response</option>
+            </select>
+
             {/* Date range filters */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>From</span>
@@ -316,6 +345,7 @@ export default function DashboardPage() {
               <button className="btn btn-sm" onClick={() => {
                 setFilterLM(''); setFilterABO(''); setFilterStore('')
                 setFilterOwner(''); setFilterDept('')
+                setFilterStatus(''); setFilterDecision(''); setFilterSatisfaction('')
                 setFilterFrom(defaultRange.from); setFilterTo(defaultRange.to)
               }}>
                 Clear filters
@@ -375,8 +405,7 @@ export default function DashboardPage() {
                         <td style={{ fontSize: 12 }}>{d.action_owner || '—'}</td>
                         <td style={{ color: 'var(--text2)', fontSize: 12 }}>{d.department || '—'}</td>
                         <td><Badge type={d.decision || ''} /></td>
-                        <td title={d.decision === 'Reject' ? (d.reject_reason || '') : ''}
-                          style={{ fontSize: 12, color: 'var(--danger)', maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>
+                        <td style={{ fontSize: 12, color: 'var(--danger)', minWidth: 220, maxWidth: 260, whiteSpace: 'normal', lineHeight: 1.5 }}>
                           {d.decision === 'Reject' ? (d.reject_reason || '—') : '—'}
                         </td>
                         <td>
@@ -395,7 +424,7 @@ export default function DashboardPage() {
                           )}
                         </td>
                         <td style={{ fontSize: 12 }}>{d.promise_date || '—'}</td>
-                        <td title={d.remarks || ''} style={{ fontSize: 12, color: 'var(--text2)', maxWidth: 140, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>
+                        <td style={{ fontSize: 12, color: 'var(--text2)', minWidth: 160, maxWidth: 220, whiteSpace: 'normal', lineHeight: 1.5 }}>
                           {d.remarks || '—'}
                         </td>
                         <td style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{formatDate(d.created_at)}</td>
@@ -407,7 +436,7 @@ export default function DashboardPage() {
                             </span>
                           ) : '—'}
                         </td>
-                        <td style={{ minWidth: 110 }}>
+                        <td style={{ minWidth: 160 }}>
                           {!d.satisfaction && d.status === 'Done' && canRespondSatisfaction ? (
                             <button className="btn btn-sm" style={{ fontSize: 11, background: 'var(--amber)', color: '#fff', border: 'none' }} onClick={() => setSatisfactionDemand(d)}>
                               Respond
@@ -417,10 +446,10 @@ export default function DashboardPage() {
                           ) : d.satisfaction === 'satisfied' ? (
                             <Badge type="satisfied" />
                           ) : d.satisfaction === 'not_satisfied' ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                               <Badge type="not_satisfied" />
                               {d.satisfaction_reason && (
-                                <span title={d.satisfaction_reason} style={{ fontSize: 10, color: 'var(--danger)', maxWidth: 140, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>
+                                <span style={{ fontSize: 11, color: 'var(--danger)', whiteSpace: 'normal', lineHeight: 1.4, display: 'block', maxWidth: 180 }}>
                                   {d.satisfaction_reason}
                                 </span>
                               )}

@@ -8,6 +8,7 @@ import DemandsPage from './pages/DemandsPage'
 import MyActionsPage from './pages/MyActionsPage'
 import StoreViewPage from './pages/StoreViewPage'
 import ProfilePage from './pages/ProfilePage'
+import ReportsPage from './pages/ReportsPage'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="my-actions" element={<MyActionsPage />} />
         <Route path="store-view" element={<StoreViewPage />} />
         <Route path="profile" element={<ProfilePage />} />
+        <Route path="reports" element={<ReportsPage />} />
       </Route>
     </Routes>
   )
