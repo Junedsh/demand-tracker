@@ -92,7 +92,8 @@ export default function DemandsPage() {
     if (filterABO && d.abo !== filterABO) return false
     if (filterStore && d.store_name !== filterStore) return false
     if (filterDept && d.department !== filterDept) return false
-    if (filterDecision && d.decision !== filterDecision) return false
+    if (filterDecision === 'null' && d.decision !== null) return false
+    if (filterDecision && filterDecision !== 'null' && d.decision !== filterDecision) return false
     if (filterMonth && d.month !== filterMonth) return false
     if (filterOwner && d.action_owner !== filterOwner) return false
     if (filterSatisfaction === 'satisfied' && d.satisfaction !== 'satisfied') return false
@@ -246,6 +247,7 @@ export default function DemandsPage() {
               <option value="">All decisions</option>
               <option value="Accept">Accepted</option>
               <option value="Reject">Rejected</option>
+              <option value="null">Not Responded</option>
             </select>
 
             <select className="filter-select" value={filterOwner} onChange={e => setFilterOwner(e.target.value)}>

@@ -175,7 +175,8 @@ export default function DashboardPage() {
     if (filterOwner && d.action_owner !== filterOwner) return false
     if (filterDept && d.department !== filterDept) return false
     if (filterStatus && d.status !== filterStatus) return false
-    if (filterDecision && d.decision !== filterDecision) return false
+    if (filterDecision === 'null' && d.decision !== null) return false
+    if (filterDecision && filterDecision !== 'null' && d.decision !== filterDecision) return false
     if (filterSatisfaction === 'satisfied' && d.satisfaction !== 'satisfied') return false
     if (filterSatisfaction === 'not_satisfied' && d.satisfaction !== 'not_satisfied') return false
     if (filterSatisfaction === 'awaiting' && !(d.status === 'Done' && !d.satisfaction)) return false
@@ -310,6 +311,7 @@ export default function DashboardPage() {
               <option value="">All Decisions</option>
               <option value="Accept">Accepted</option>
               <option value="Reject">Rejected</option>
+              <option value="null">Not Responded</option>
             </select>
 
             <select className="filter-select" value={filterSatisfaction} onChange={e => setFilterSatisfaction(e.target.value)}>
