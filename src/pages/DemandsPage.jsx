@@ -6,17 +6,32 @@ import { Badge, Icons } from '../components/Icons'
 import DemandModal from '../components/DemandModal'
 import ReviewModal from '../components/ReviewModal'
 import SatisfactionModal from '../components/SatisfactionModal'
+import RejectModal from '../components/RejectModal'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 function getMonthRange() {
   const now = new Date()
-  const first = new Date(now.getFullYear(), now.getMonth(), 1)
-  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  const first = new Date(now.getFullYear(), 4, 1) // May 1st
+  const today = now.toISOString().slice(0, 10)
   return {
     from: first.toISOString().slice(0, 10),
-    to: last.toISOString().slice(0, 10),
+    to: today,
   }
+}
+
+function getMonthOptions() {
+  const options = []
+  const start = new Date(2026, 4, 1) // May 2026
+  const now = new Date()
+  let cur = new Date(start)
+  while (cur <= now) {
+    const label = cur.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+    const value = `${cur.getFullYear()}-${cur.getMonth() + 1}`
+    options.push({ label, value })
+    cur.setMonth(cur.getMonth() + 1)
+  }
+  return options.reverse()
 }
 
 export default function DemandsPage() {
@@ -25,6 +40,7 @@ export default function DemandsPage() {
   const [demands, setDemands] = useState([])
   const [loading, setLoading] = useState(true)
   const [myStores, setMyStores] = useState(null)
+  const [rejectDemand, setRejectDemand] = useState(null)
 
   const [search, setSearch] = useState('')
   const [filterLM, setFilterLM] = useState('')
@@ -35,6 +51,7 @@ export default function DemandsPage() {
   const [filterMonth, setFilterMonth] = useState('')
   const [filterOwner, setFilterOwner] = useState('')
   const [filterSatisfaction, setFilterSatisfaction] = useState('')
+  const [filterCreatedMonth, setFilterCreatedMonth] = useState('')
 
   const defaultRange = getMonthRange()
   const [filterFrom, setFilterFrom] = useState(defaultRange.from)
@@ -84,6 +101,7 @@ export default function DemandsPage() {
   const storeOptions = [...new Set(demands.map(d => d.store_name).filter(Boolean))].sort()
   const depts = [...new Set(demands.map(d => d.department).filter(Boolean))]
   const owners = [...new Set(demands.map(d => d.action_owner).filter(Boolean))]
+  const monthOptions = getMonthOptions()
 
   const filtered = demands.filter(d => {
     const q = search.toLowerCase()
@@ -101,18 +119,24 @@ export default function DemandsPage() {
     if (filterSatisfaction === 'awaiting' && !(d.status === 'Done' && !d.satisfaction)) return false
     if (filterFrom && d.created_at && d.created_at.slice(0, 10) < filterFrom) return false
     if (filterTo && d.created_at && d.created_at.slice(0, 10) > filterTo) return false
+    if (filterCreatedMonth) {
+      const [fYear, fMonth] = filterCreatedMonth.split('-')
+      if (!d.created_at) return false
+      const d2 = new Date(d.created_at)
+      if (d2.getFullYear() !== parseInt(fYear) || d2.getMonth() + 1 !== parseInt(fMonth)) return false
+    }
     return true
   })
 
   function clearAll() {
     setSearch(''); setFilterLM(''); setFilterABO(''); setFilterStore('')
     setFilterDept(''); setFilterDecision(''); setFilterMonth(''); setFilterOwner('')
-    setFilterSatisfaction('')
+    setFilterSatisfaction(''); setFilterCreatedMonth('')
     setFilterFrom(defaultRange.from); setFilterTo(defaultRange.to)
   }
 
   const hasFilters = search || filterLM || filterABO || filterStore || filterDept
-    || filterDecision || filterMonth || filterOwner || filterSatisfaction
+    || filterDecision || filterMonth || filterOwner || filterSatisfaction || filterCreatedMonth
     || filterFrom !== defaultRange.from || filterTo !== defaultRange.to
 
   async function handleAdd(form) {
@@ -139,6 +163,14 @@ export default function DemandsPage() {
 
   async function handleReview(reviewData) {
     const updateData = { ...reviewData }
+    if (reviewData.action_owner && reviewData.action_owner !== reviewDemand.action_owner) {
+      const { error } = await supabase.from('demands').update(updateData).eq('id', reviewDemand.id)
+      if (error) throw error
+      toast('Demand reassigned', 'success')
+      setReviewDemand(null)
+      refetch()
+      return
+    }
     if (reviewData.status === 'Done') {
       updateData.completed_at = new Date().toISOString()
       updateData.satisfaction = null
@@ -153,6 +185,19 @@ export default function DemandsPage() {
     if (error) throw error
     toast('Review saved', 'success')
     setReviewDemand(null)
+    refetch()
+  }
+
+  async function handleReject({ reason }) {
+    const { error } = await supabase.from('demands').update({
+      decision: 'Reject',
+      reject_reason: reason,
+      rejected_by: profile?.full_name || profile?.email,
+      status: null,
+    }).eq('id', rejectDemand.id)
+    if (error) throw error
+    toast('Demand rejected', 'error')
+    setRejectDemand(null)
     refetch()
   }
 
@@ -262,7 +307,11 @@ export default function DemandsPage() {
               <option value="awaiting">Awaiting response</option>
             </select>
 
-            {/* Date range */}
+            <select className="filter-select" value={filterCreatedMonth} onChange={e => setFilterCreatedMonth(e.target.value)}>
+              <option value="">All Months</option>
+              {monthOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>From</span>
               <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} className="filter-select" style={{ width: 140 }} />
@@ -326,8 +375,17 @@ export default function DemandsPage() {
                       <td style={{ fontSize: 11, color: 'var(--text3)' }}>{d.department || '—'}</td>
                       <td><span className="month-chip">{d.month || '—'}</span></td>
                       <td><Badge type={d.decision || ''} /></td>
-                      <td style={{ fontSize: 12, maxWidth: 160 }}>
-                        {d.decision === 'Reject' ? <span style={{ color: 'var(--danger)' }}>{d.reject_reason || '—'}</span> : '—'}
+                      <td style={{ fontSize: 12, minWidth: 160, whiteSpace: 'normal', lineHeight: 1.5 }}>
+                        {d.decision === 'Reject' ? (
+                          <>
+                            <span style={{ color: 'var(--danger)' }}>{d.reject_reason || '—'}</span>
+                            {d.rejected_by && (
+                              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>
+                                by {d.rejected_by}
+                              </div>
+                            )}
+                          </>
+                        ) : '—'}
                       </td>
                       <td>
                         {d.status ? <Badge type={d.status} /> : '—'}
@@ -352,13 +410,22 @@ export default function DemandsPage() {
                         <SatisfactionBadge demand={d} />
                       </td>
                       <td>
-                        <div style={{ display: 'flex', gap: 4 }}>
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                           <button className="btn btn-sm btn-icon" onClick={() => setEditDemand(d)} title="Edit">
                             {Icons.edit}
                           </button>
                           {(role === 'owner' || role === 'admin') && (
                             <button className="btn btn-sm" onClick={() => setReviewDemand(d)} style={{ fontSize: 11 }}>
                               Review
+                            </button>
+                          )}
+                          {['lm', 'abo', 'admin'].includes(role) && d.decision !== 'Reject' && (
+                            <button
+                              className="btn btn-sm"
+                              onClick={() => setRejectDemand(d)}
+                              style={{ fontSize: 11, color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                            >
+                              Reject
                             </button>
                           )}
                         </div>
@@ -374,8 +441,9 @@ export default function DemandsPage() {
 
       {showAdd && <DemandModal userProfile={profile} onClose={() => setShowAdd(false)} onSave={handleAdd} />}
       {editDemand && <DemandModal demand={editDemand} userProfile={profile} onClose={() => setEditDemand(null)} onSave={handleEdit} />}
-      {reviewDemand && <ReviewModal demand={reviewDemand} onClose={() => setReviewDemand(null)} onSave={handleReview} />}
+      {reviewDemand && <ReviewModal demand={reviewDemand} userProfile={profile} onClose={() => setReviewDemand(null)} onSave={handleReview} />}
       {satisfactionDemand && <SatisfactionModal demand={satisfactionDemand} onClose={() => setSatisfactionDemand(null)} onSave={handleSatisfaction} />}
+      {rejectDemand && <RejectModal demand={rejectDemand} onClose={() => setRejectDemand(null)} onSave={handleReject} />}
     </>
   )
 }

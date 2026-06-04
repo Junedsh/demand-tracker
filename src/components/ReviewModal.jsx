@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Icons } from './Icons'
 import { supabase } from '../lib/supabase'
 
-export default function ReviewModal({ demand, onClose, onSave }) {
+export default function ReviewModal({ demand, onClose, onSave, userProfile }) {
   const [decision, setDecision] = useState('')
   const [rejectReason, setRejectReason] = useState('')
   const [promiseDate, setPromiseDate] = useState('')
@@ -66,6 +66,7 @@ export default function ReviewModal({ demand, onClose, onSave }) {
     }
 
     if (!decision) return setError('Please select Accept, Reject, or Need Clarification')
+    if (decision === 'Accept' && !promiseDate) return setError('Promise date is required when accepting a demand')
     if (decision === 'Reject' && !rejectReason.trim()) return setError('Rejection reason is required')
     if (decision === 'Clarification' && !clarificationNote.trim()) return setError('Please describe what clarification is needed')
     setSaving(true)
@@ -74,6 +75,7 @@ export default function ReviewModal({ demand, onClose, onSave }) {
       const payload = {
         decision: decision === 'Clarification' ? null : decision,
         reject_reason: rejectReason,
+        rejected_by: decision === 'Reject' ? (profile?.full_name || profile?.email) : null,
         promise_date: promiseDate,
         status: decision === 'Clarification' ? 'Pending' : status,
         remarks,
@@ -194,7 +196,7 @@ export default function ReviewModal({ demand, onClose, onSave }) {
 
               {decision === 'Accept' && (
                 <div className="field">
-                  <label>Promise Date</label>
+                  <label>Promise Date <span className="req">*</span></label>
                   <input type="date" value={promiseDate} onChange={e => setPromiseDate(e.target.value)} />
                   <div className="field-hint">When will this be resolved?</div>
                 </div>

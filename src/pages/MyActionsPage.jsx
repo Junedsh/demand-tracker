@@ -268,7 +268,7 @@ export default function MyActionsPage() {
         </div>
       </div>
 
-      {reviewDemand && <ReviewModal demand={reviewDemand} onClose={() => setReviewDemand(null)} onSave={handleReview} />}
+      {reviewDemand && <ReviewModal demand={reviewDemand} userProfile={profile} onClose={() => setReviewDemand(null)} onSave={handleReview} />}
     </>
   )
 }

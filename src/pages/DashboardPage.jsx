@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { Badge, Icons } from '../components/Icons'
 import DemandModal from '../components/DemandModal'
 import SatisfactionModal from '../components/SatisfactionModal'
+import RejectModal from '../components/RejectModal'
 
 function formatDate(iso) {
   if (!iso) return '—'
@@ -19,23 +20,37 @@ function calcTAT(created, completed) {
 
 function getMonthRange() {
   const now = new Date()
-  const first = new Date(now.getFullYear(), now.getMonth(), 1)
-  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  const first = new Date(now.getFullYear(), 4, 1) // May 1st
+  const today = now.toISOString().slice(0, 10)
   return {
     from: first.toISOString().slice(0, 10),
-    to: last.toISOString().slice(0, 10),
+    to: today,
   }
 }
 
+function getMonthOptions() {
+  const options = []
+  const start = new Date(2026, 4, 1) // May 2026
+  const now = new Date()
+  let cur = new Date(start)
+  while (cur <= now) {
+    const label = cur.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+    const value = `${cur.getFullYear()}-${cur.getMonth() + 1}`
+    options.push({ label, value })
+    cur.setMonth(cur.getMonth() + 1)
+  }
+  return options.reverse()
+}
+
 function downloadCSV(data) {
-  const headers = ['Store', 'ABO', 'LM', 'Ask', 'Owner', 'Department', 'Decision', 'Rejection Reason', 'Status', 'Promise Date', 'Remarks', 'Satisfaction', 'Satisfaction Reason', 'Satisfaction By', 'Created Date', 'Completed Date', 'TAT (days)']
+  const headers = ['Store', 'ABO', 'LM', 'Ask', 'Owner', 'Department', 'Decision', 'Rejection Reason', 'Rejected By', 'Status', 'Promise Date', 'Remarks', 'Satisfaction', 'Satisfaction Reason', 'Satisfaction By', 'Created Date', 'Completed Date', 'TAT (days)']
   const rows = data.map(d => {
     const tat = calcTAT(d.created_at, d.completed_at)
     return [
       d.store_name || '', d.abo || '', d.lm_name || '', d.original_ask || '',
       d.action_owner || '', d.department || '', d.decision || '', d.reject_reason || '',
-      d.status || '', d.promise_date || '', d.remarks || '', d.satisfaction || '',
-      d.satisfaction_reason || '', d.satisfaction_by || '',
+      d.rejected_by || '', d.status || '', d.promise_date || '', d.remarks || '',
+      d.satisfaction || '', d.satisfaction_reason || '', d.satisfaction_by || '',
       d.created_at ? formatDate(d.created_at) : '',
       d.completed_at ? formatDate(d.completed_at) : '',
       tat !== null ? tat : '',
@@ -69,6 +84,8 @@ export default function DashboardPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [myStores, setMyStores] = useState(null)
   const [satisfactionDemand, setSatisfactionDemand] = useState(null)
+  const [rejectDemand, setRejectDemand] = useState(null)
+  const [filterCreatedMonth, setFilterCreatedMonth] = useState('')
 
   const [filterLM, setFilterLM] = useState('')
   const [filterABO, setFilterABO] = useState('')
@@ -107,7 +124,6 @@ export default function DashboardPage() {
   async function fetchDemands(storeNames) {
     setLoading(true)
     let query = supabase.from('demands').select('*').order('created_at', { ascending: false })
-
     if (role === 'owner') {
       query = query.ilike('action_owner', `%${profile.full_name}%`)
     } else if (role === 'manager') {
@@ -125,7 +141,6 @@ export default function DashboardPage() {
     } else if (storeNames.length > 0) {
       query = query.in('store_name', storeNames)
     }
-
     const { data, error } = await query
     if (error) toast(error.message, 'error')
     else setDemands(data ?? [])
@@ -162,11 +177,25 @@ export default function DashboardPage() {
     refetch()
   }
 
+  async function handleReject({ reason }) {
+    const { error } = await supabase.from('demands').update({
+      decision: 'Reject',
+      reject_reason: reason,
+      rejected_by: profile?.full_name || profile?.email,
+      status: null,
+    }).eq('id', rejectDemand.id)
+    if (error) throw error
+    toast('Demand rejected', 'error')
+    setRejectDemand(null)
+    refetch()
+  }
+
   const lmOptions = [...new Set(demands.map(d => d.lm_name).filter(Boolean))].sort()
   const aboOptions = [...new Set(demands.map(d => d.abo).filter(Boolean))].sort()
   const storeOptions = [...new Set(demands.map(d => d.store_name).filter(Boolean))].sort()
   const ownerOptions = [...new Set(demands.map(d => d.action_owner).filter(Boolean))].sort()
   const deptOptions = [...new Set(demands.map(d => d.department).filter(Boolean))].sort()
+  const monthOptions = getMonthOptions()
 
   const displayed = demands.filter(d => {
     if (filterLM && d.lm_name !== filterLM) return false
@@ -174,7 +203,8 @@ export default function DashboardPage() {
     if (filterStore && d.store_name !== filterStore) return false
     if (filterOwner && d.action_owner !== filterOwner) return false
     if (filterDept && d.department !== filterDept) return false
-    if (filterStatus && d.status !== filterStatus) return false
+    if (filterStatus === 'clarification' && !d.clarification_needed) return false
+    if (filterStatus && filterStatus !== 'clarification' && d.status !== filterStatus) return false
     if (filterDecision === 'null' && d.decision !== null) return false
     if (filterDecision && filterDecision !== 'null' && d.decision !== filterDecision) return false
     if (filterSatisfaction === 'satisfied' && d.satisfaction !== 'satisfied') return false
@@ -182,6 +212,12 @@ export default function DashboardPage() {
     if (filterSatisfaction === 'awaiting' && !(d.status === 'Done' && !d.satisfaction)) return false
     if (filterFrom && d.created_at && d.created_at.slice(0, 10) < filterFrom) return false
     if (filterTo && d.created_at && d.created_at.slice(0, 10) > filterTo) return false
+    if (filterCreatedMonth) {
+      const [fYear, fMonth] = filterCreatedMonth.split('-')
+      if (!d.created_at) return false
+      const d2 = new Date(d.created_at)
+      if (d2.getFullYear() !== parseInt(fYear) || d2.getMonth() + 1 !== parseInt(fMonth)) return false
+    }
     return true
   })
 
@@ -201,7 +237,7 @@ export default function DashboardPage() {
   }
 
   const hasFilters = filterLM || filterABO || filterStore || filterOwner || filterDept
-    || filterStatus || filterDecision || filterSatisfaction
+    || filterStatus || filterDecision || filterSatisfaction || filterCreatedMonth
     || filterFrom !== defaultRange.from || filterTo !== defaultRange.to
 
   const patchLabel = role === 'admin' ? 'All stores'
@@ -305,6 +341,7 @@ export default function DashboardPage() {
               <option value="Pending">Pending</option>
               <option value="In Progress">In Progress</option>
               <option value="Done">Done</option>
+              <option value="clarification">Needs Clarification</option>
             </select>
 
             <select className="filter-select" value={filterDecision} onChange={e => setFilterDecision(e.target.value)}>
@@ -321,26 +358,18 @@ export default function DashboardPage() {
               <option value="awaiting">Awaiting Response</option>
             </select>
 
-            {/* Date range filters */}
+            <select className="filter-select" value={filterCreatedMonth} onChange={e => setFilterCreatedMonth(e.target.value)}>
+              <option value="">All Months</option>
+              {monthOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>From</span>
-              <input
-                type="date"
-                value={filterFrom}
-                onChange={e => setFilterFrom(e.target.value)}
-                className="filter-select"
-                style={{ width: 140 }}
-              />
+              <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} className="filter-select" style={{ width: 140 }} />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>To</span>
-              <input
-                type="date"
-                value={filterTo}
-                onChange={e => setFilterTo(e.target.value)}
-                className="filter-select"
-                style={{ width: 140 }}
-              />
+              <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} className="filter-select" style={{ width: 140 }} />
             </div>
 
             {hasFilters && (
@@ -348,6 +377,7 @@ export default function DashboardPage() {
                 setFilterLM(''); setFilterABO(''); setFilterStore('')
                 setFilterOwner(''); setFilterDept('')
                 setFilterStatus(''); setFilterDecision(''); setFilterSatisfaction('')
+                setFilterCreatedMonth('')
                 setFilterFrom(defaultRange.from); setFilterTo(defaultRange.to)
               }}>
                 Clear filters
@@ -392,6 +422,7 @@ export default function DashboardPage() {
                     <th>Completed</th>
                     <th>TAT</th>
                     <th>Satisfaction</th>
+                    {['lm', 'abo', 'admin'].includes(role) && <th></th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -417,7 +448,16 @@ export default function DashboardPage() {
                         <td style={{ color: 'var(--text2)', fontSize: 12 }}>{d.department || '—'}</td>
                         <td><Badge type={d.decision || ''} /></td>
                         <td style={{ fontSize: 12, color: 'var(--danger)', minWidth: 220, maxWidth: 260, whiteSpace: 'normal', lineHeight: 1.5 }}>
-                          {d.decision === 'Reject' ? (d.reject_reason || '—') : '—'}
+                          {d.decision === 'Reject' ? (
+                            <>
+                              {d.reject_reason || '—'}
+                              {d.rejected_by && (
+                                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>
+                                  by {d.rejected_by}
+                                </div>
+                              )}
+                            </>
+                          ) : '—'}
                         </td>
                         <td>
                           {d.status ? <Badge type={d.status} /> : '—'}
@@ -469,6 +509,19 @@ export default function DashboardPage() {
                             <span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>
                           )}
                         </td>
+                        {['lm', 'abo', 'admin'].includes(role) && (
+                          <td>
+                            {d.decision !== 'Reject' && (
+                              <button
+                                className="btn btn-sm"
+                                onClick={() => setRejectDemand(d)}
+                                style={{ fontSize: 11, color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                              >
+                                Reject
+                              </button>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     )
                   })}
@@ -481,6 +534,7 @@ export default function DashboardPage() {
 
       {showAdd && <DemandModal userProfile={profile} onClose={() => setShowAdd(false)} onSave={handleSave} />}
       {satisfactionDemand && <SatisfactionModal demand={satisfactionDemand} onClose={() => setSatisfactionDemand(null)} onSave={handleSatisfaction} />}
+      {rejectDemand && <RejectModal demand={rejectDemand} onClose={() => setRejectDemand(null)} onSave={handleReject} />}
     </>
   )
 }
