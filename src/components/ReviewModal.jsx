@@ -75,7 +75,7 @@ export default function ReviewModal({ demand, onClose, onSave, userProfile }) {
       const payload = {
         decision: decision === 'Clarification' ? null : decision,
         reject_reason: rejectReason,
-        rejected_by: decision === 'Reject' ? (profile?.full_name || profile?.email) : null,
+        rejected_by: decision === 'Reject' ? (userProfile?.full_name || userProfile?.email) : null,
         promise_date: promiseDate,
         status: decision === 'Clarification' ? 'Pending' : status,
         remarks,
